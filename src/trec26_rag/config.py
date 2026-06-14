@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+DEFAULT_CONFIG: dict[str, Any] = {
+    "experiment": {
+        "name": "baseline_title_top100",
+        "hypothesis": "A title-only BM25 query is the smallest useful retrieval baseline.",
+        "task": "retrieval",
+        "track_year": 2026,
+        "team_id": "glhf",
+        "run_id": "glhf-title-top100",
+    },
+    "data": {
+        "topics_path": "data/trec_rag_2026_queries.jsonl",
+    },
+    "retrieval": {
+        "api_base_url": "http://99.251.12.72:8081",
+        "index": "climbmix-400b",
+        "query_template": "{title}",
+        "hits": 100,
+        "timeout_seconds": 30,
+    },
+    "output": {
+        "output_dir": "outputs",
+        "runfile_name": "r_output_trec_rag_2026.tsv",
+        "validation_report_name": "retrieval_validation_report.json",
+    },
+    "wandb": {
+        "project": "trec26-rag-glhf",
+        "entity": None,
+        "mode": "online",
+        "tags": ["baseline", "retrieval", "climbmix-400b", "dev"],
+    },
+    "optimization": {
+        "objective_metric": "candidate_count_mean",
+        "objective_direction": "maximize",
+    },
+}
+
+
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_config(path: str | Path) -> dict[str, Any]:
+    config_path = Path(path)
+    with config_path.open("r", encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Config must be a mapping: {config_path}")
+    return deep_merge(DEFAULT_CONFIG, loaded)
+
+
+def write_config(config: dict[str, Any], path: str | Path) -> None:
+    config_path = Path(path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=False)
+
+
+def env_or_config(value: Any, env_value: str | None) -> Any:
+    return env_value if env_value not in (None, "") else value

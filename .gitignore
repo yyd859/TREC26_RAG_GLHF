@@ -149,6 +149,7 @@ activemq-data/
 
 # Environments
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -208,6 +209,16 @@ tempCodeRunnerFile.py
 
 # PyPI configuration file
 .pypirc
+
+# TREC RAG local artifacts and credentials
+.curlrc.pyserini-rest
+outputs/*
+!outputs/.gitkeep
+wandb/
+data/*.jsonl
+data/*.tsv
+data/*.json
+data/*.zip
 
 # Marimo
 marimo/_static/

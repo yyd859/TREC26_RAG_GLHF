@@ -1,0 +1,43 @@
+name: Propose Next Experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_config:
+        description: "Base config"
+        required: true
+        default: "configs/baseline_retrieval.yaml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Generate next experiment config
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
+          WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
+        run: python scripts/propose_next_experiment.py --base-config "${{ inputs.base_config }}" --output-dir configs/experiments
+      - name: Open config proposal PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: codex/propose-next-experiment
+          delete-branch: true
+          title: "Propose next retrieval experiment"
+          commit-message: "Add next retrieval experiment config"
+          body: |
+            This PR was generated from recent W&B retrieval runs.
+
+            It only adds a config under `configs/experiments/` so the next
+            experiment can be reviewed before it runs.

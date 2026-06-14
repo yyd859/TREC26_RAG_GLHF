@@ -1,0 +1,36 @@
+experiment:
+  name: baseline_title_top100
+  hypothesis: "A title-only BM25 query is the smallest useful retrieval baseline."
+  task: retrieval
+  track_year: 2026
+  team_id: glhf
+  run_id: glhf-title-top100
+
+data:
+  topics_path: data/trec_rag_2026_queries.jsonl
+
+retrieval:
+  api_base_url: "http://99.251.12.72:8081"
+  index: climbmix-400b
+  query_template: "{title}"
+  hits: 100
+  timeout_seconds: 30
+
+output:
+  output_dir: outputs
+  runfile_name: r_output_trec_rag_2026.tsv
+  validation_report_name: retrieval_validation_report.json
+
+wandb:
+  project: trec26-rag-glhf
+  entity: null
+  mode: online
+  tags:
+    - baseline
+    - retrieval
+    - climbmix-400b
+    - dev
+
+optimization:
+  objective_metric: candidate_count_mean
+  objective_direction: maximize
