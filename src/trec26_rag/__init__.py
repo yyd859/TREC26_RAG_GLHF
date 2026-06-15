@@ -2,6 +2,7 @@
 
 __all__ = [
     "config",
+    "evaluation",
     "experiment_optimizer",
     "pyserini_client",
     "runfile",

@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from trec26_rag.config import load_config
+from trec26_rag.evaluation import evaluate_retrieval_run
 from trec26_rag.pyserini_client import PyseriniClient
 from trec26_rag.runfile import RunRow, read_topics, render_query, validate_runfile, write_runfile
 from trec26_rag.wandb_logging import log_retrieval_run
@@ -79,6 +80,30 @@ def main() -> int:
     per_topic = diagnostics.setdefault("per_topic", {})
     for topic_id, latency in per_topic_latency.items():
         per_topic.setdefault(topic_id, {})["latency_seconds"] = latency
+    evaluation_config = config.get("evaluation", {})
+    qrels_path = evaluation_config.get("qrels_path")
+    if qrels_path:
+        qrels_file = Path(qrels_path)
+        if qrels_file.exists():
+            evaluation_report = evaluate_retrieval_run(
+                runfile_path=runfile_path,
+                qrels_path=qrels_file,
+                relevance_threshold=int(evaluation_config.get("relevance_threshold", 1)),
+            )
+            report["evaluation"] = evaluation_report
+            metrics.update(evaluation_report["metrics"])
+        else:
+            report["evaluation"] = {
+                "enabled": False,
+                "reason": f"Configured qrels_path does not exist: {qrels_file}",
+            }
+            metrics["level2_evaluation_enabled"] = 0
+    else:
+        report["evaluation"] = {
+            "enabled": False,
+            "reason": "No qrels_path configured.",
+        }
+        metrics["level2_evaluation_enabled"] = 0
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 

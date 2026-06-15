@@ -56,6 +56,17 @@ The baseline writes:
 - `outputs/r_output_trec_rag_2026.tsv`
 - `outputs/retrieval_validation_report.json`
 
+## Evaluation Layers
+
+The validation report separates evaluation into three layers:
+
+- `Level 0`: runfile validity and completeness. This checks TREC column format,
+  rank order, score order, missing topics, and validation errors.
+- `Level 1`: retrieval diagnostics. This records empty topic count, duplicate
+  doc rate, score statistics, candidate count distribution, and latency.
+- `Level 2`: relevance metrics. When qrels are configured, this adds
+  `nDCG@10`, `Recall@100`, `MAP`, and `MRR`.
+
 ## Validate A Runfile
 
 ```bash
@@ -63,6 +74,28 @@ python scripts/validate_retrieval_run.py \
   --runfile outputs/r_output_trec_rag_2026.tsv \
   --topics data/trec_rag_2026_queries.jsonl
 ```
+
+## Level 2 Retrieval Evaluation
+
+If qrels are available, add them to `data/qrels/` and set:
+
+```yaml
+evaluation:
+  qrels_path: data/qrels/rag25-climbmix-umbrela-codex-gpt5.5-medium-reasoning.qrels
+  relevance_threshold: 1
+```
+
+The baseline runner will add `nDCG@10`, `Recall@100`, `MAP`, and `MRR` to the
+validation report and W&B metrics. You can also evaluate an existing runfile:
+
+```bash
+python scripts/evaluate_retrieval_run.py \
+  --runfile outputs/r_output_trec_rag_2026.tsv \
+  --qrels data/qrels/rag25-climbmix-umbrela-codex-gpt5.5-medium-reasoning.qrels
+```
+
+If `evaluation.qrels_path` is `null`, Level 2 is skipped and
+`level2_evaluation_enabled` is logged as `0`.
 
 ## Propose The Next Experiment
 

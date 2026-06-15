@@ -219,6 +219,8 @@ data/*.jsonl
 data/*.tsv
 data/*.json
 data/*.zip
+data/qrels/*.qrels
+!data/qrels/README.md
 
 # Marimo
 marimo/_static/

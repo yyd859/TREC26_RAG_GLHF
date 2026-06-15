@@ -22,6 +22,15 @@ PYTHONPATH=src python -m unittest discover -s tests
 4. Run `scripts/propose_next_experiment.py` to create the next config.
 5. Open or review a PR for the generated config before running it.
 
+## Evaluation Layers
+
+- `Level 0`: validator checks runfile format, complete topic coverage, rank order, and score order.
+- `Level 1`: diagnostics summarize empty topics, duplicate docs, score stats, candidate counts, and latency.
+- `Level 2`: optional qrels-based metrics add `nDCG@10`, `Recall@100`, `MAP`, and `MRR`.
+
+Level 2 should be treated as optional. If `evaluation.qrels_path` is null or
+missing, do not block the baseline run.
+
 ## Allowed Early Optimization Surface
 
 Early agent-generated experiments should change only:
@@ -32,5 +41,7 @@ Early agent-generated experiments should change only:
 - `experiment.hypothesis`
 - `experiment.run_id`
 - `wandb.tags`
+- `evaluation.qrels_path`
+- `evaluation.relevance_threshold`
 
 Changing retrieval client behavior, output formats, or validation rules should be a separate human-reviewed PR.

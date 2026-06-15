@@ -31,6 +31,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "runfile_name": "r_output_trec_rag_2026.tsv",
         "validation_report_name": "retrieval_validation_report.json",
     },
+    "evaluation": {
+        "qrels_path": None,
+        "relevance_threshold": 1,
+        "metrics": ["ndcg@10", "recall@100", "map", "mrr"],
+    },
     "wandb": {
         "project": "trec26-rag-glhf",
         "entity": None,
