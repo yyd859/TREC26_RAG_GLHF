@@ -44,9 +44,12 @@ def main() -> int:
 
     started_at = time.monotonic()
     rows: list[RunRow] = []
+    per_topic_latency: dict[str, float] = {}
     for topic in topics:
         query = render_query(retrieval_config["query_template"], topic)
+        topic_started_at = time.monotonic()
         hits = client.search(query=query, hits=int(retrieval_config["hits"]))
+        per_topic_latency[topic.id] = round(time.monotonic() - topic_started_at, 3)
         for rank, hit in enumerate(hits, 1):
             rows.append(
                 RunRow(
@@ -64,7 +67,18 @@ def main() -> int:
     metrics["runtime_seconds"] = round(time.monotonic() - started_at, 3)
     metrics["requested_topics"] = len(topics)
     metrics["requested_hits"] = int(retrieval_config["hits"])
+    latency_values = list(per_topic_latency.values())
+    metrics["latency_seconds_min"] = min(latency_values) if latency_values else 0.0
+    metrics["latency_seconds_max"] = max(latency_values) if latency_values else 0.0
+    metrics["latency_seconds_mean"] = (
+        sum(latency_values) / len(latency_values) if latency_values else 0.0
+    )
+    metrics["latency_seconds_total"] = sum(latency_values)
     report["metrics"] = metrics
+    diagnostics = report.setdefault("diagnostics", {})
+    per_topic = diagnostics.setdefault("per_topic", {})
+    for topic_id, latency in per_topic_latency.items():
+        per_topic.setdefault(topic_id, {})["latency_seconds"] = latency
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
