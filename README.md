@@ -69,6 +69,26 @@ python scripts/run_rag_baseline.py \
   --limit 2
 ```
 
+For a full local smoke test with W&B logging:
+
+```bash
+python scripts/prepare_dev_topics.py
+python scripts/run_rag_baseline.py \
+  --config configs/baseline_rag.yaml \
+  --limit 2 \
+  --log-wandb
+```
+
+For a GitHub Actions smoke test, open **Actions -> Run RAG Baseline -> Run
+workflow**, choose the branch to test, and use:
+
+- `config`: `configs/baseline_rag.yaml`
+- `limit`: `2`
+
+The RAG workflow can be manually dispatched on any branch. Repository secrets
+must include `PYSERINI_API_TOKEN`, `ANTHROPIC_API_KEY`, `WANDB_API_KEY`,
+`WANDB_PROJECT`, and usually `WANDB_ENTITY`.
+
 The Pyserini client supports fetching full ClimbMix documents by
 `docid` and hydrating search hits when the search response lacks enough text.
 The RAG runner uses that path before submitting evidence to Anthropic Message
@@ -93,6 +113,13 @@ The same per-topic rows are also logged to W&B as a table named
 The self-contained viewer is also logged as W&B HTML media named
 `rag_viewer`, so it can be opened from the run page as well as from the
 artifact snapshot.
+
+After a successful smoke run, check:
+
+- The Actions artifact `rag-baseline-outputs`.
+- The W&B scalar metrics and `rag_outputs` table.
+- The W&B HTML media panel `rag_viewer`.
+- `rag_validation_error_count == 0` for a passing smoke run.
 
 RAG JSONL validation is available with:
 

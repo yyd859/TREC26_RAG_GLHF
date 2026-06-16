@@ -59,6 +59,29 @@ config. It should also log a W&B table named `rag_outputs` for per-topic
 inspection and W&B HTML media named `rag_viewer` for opening the viewer from
 the run page without downloading the artifact.
 
+## RAG Smoke Tests
+
+Use a two-topic smoke test before treating RAG workflow changes as ready:
+
+```bash
+python scripts/prepare_dev_topics.py
+python scripts/run_rag_baseline.py \
+  --config configs/baseline_rag.yaml \
+  --limit 2 \
+  --log-wandb
+```
+
+When using GitHub Actions, trigger **Run RAG Baseline** manually on the branch
+under test with `config=configs/baseline_rag.yaml` and `limit=2`. The workflow
+is allowed on all branches so feature branches can be validated before merging
+to `dev`.
+
+A passing RAG smoke test should produce `outputs/rag_output_trec_rag_2026.jsonl`,
+`outputs/rag_validation_report.json`, `outputs/rag_viewer.html`,
+`outputs/rag_outputs_table.csv`, and `outputs/rag_outputs_table.jsonl`. In W&B,
+confirm scalar metrics, the `rag_outputs` table, and the `rag_viewer` HTML media
+exist. Treat nonzero `rag_validation_error_count` as a failed smoke test.
+
 ## Allowed Early Optimization Surface
 
 Early agent-generated experiments should change only:
