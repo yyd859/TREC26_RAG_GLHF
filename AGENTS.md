@@ -35,8 +35,8 @@ missing, do not block the baseline run.
 
 The YAML config includes a `rag` section with `enabled`, `evidence_top_k`,
 `generator_provider`, `model`, `prompt_template`, and `max_output_tokens`.
-Current retrieval workflows should preserve this section but do not consume it
-until the RAG baseline runner is implemented.
+Retrieval workflows preserve this section but do not consume it. RAG workflows
+should use `configs/baseline_rag.yaml` and `scripts/run_rag_baseline.py`.
 
 Use `PyseriniClient.hydrate_hits(...)` for RAG evidence preparation when search
 hits do not include enough document text. Do not duplicate ClimbMix document
@@ -48,8 +48,8 @@ Anthropic Message Batches by default with Claude Haiku 4.5 and requires
 
 Use `write_rag_jsonl(...)` for RAG submissions. The default output file is
 `rag_output_trec_rag_2026.jsonl` under the configured output directory.
-Validate RAG output with `validate_rag_jsonl(...)` or `scripts/validate_rag_output.py`
-before logging or submitting artifacts.
+The RAG runner validates output with `validate_rag_jsonl(...)` before returning
+success, and the GitHub workflow uploads all files under `outputs/`.
 
 ## Allowed Early Optimization Surface
 

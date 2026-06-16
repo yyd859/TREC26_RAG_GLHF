@@ -57,35 +57,23 @@ The baseline writes:
 - `outputs/r_output_trec_rag_2026.tsv`
 - `outputs/retrieval_validation_report.json`
 
-## RAG Config
+## RAG Baseline
 
-The shared YAML config includes a placeholder RAG section for the upcoming RAG
-baseline:
+RAG runs use `configs/baseline_rag.yaml` by default and write
+`outputs/rag_output_trec_rag_2026.jsonl` plus
+`outputs/rag_validation_report.json`.
 
-```yaml
-rag:
-  enabled: false
-  evidence_top_k: 5
-  generator_provider: anthropic_batch
-  model: claude-haiku-4-5-20251001
-  prompt_template: |
-    Answer the topic using only the provided ClimbMix evidence.
-  max_output_tokens: 800
+```bash
+python scripts/run_rag_baseline.py \
+  --config configs/baseline_rag.yaml \
+  --limit 2
 ```
 
-The current retrieval baseline does not generate RAG answers yet. This section
-exists so future RAG experiments can be config-driven without changing the
-retrieval workflow contract.
-
-The Pyserini client already supports fetching full ClimbMix documents by
+The Pyserini client supports fetching full ClimbMix documents by
 `docid` and hydrating search hits when the search response lacks enough text.
-Future RAG runners should use this instead of duplicating document fetch logic.
-
-The minimal generator wrapper supports Anthropic Message Batches using
-`ANTHROPIC_API_KEY`; by default it targets Claude Haiku 4.5.
-
-RAG output writing is available through `write_rag_jsonl(...)` and defaults to
-`outputs/rag_output_trec_rag_2026.jsonl`.
+The RAG runner uses that path before submitting evidence to Anthropic Message
+Batches. It requires `PYSERINI_API_TOKEN` and `ANTHROPIC_API_KEY`; W&B logging
+also requires the W&B environment variables listed above.
 
 RAG JSONL validation is available with:
 

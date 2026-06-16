@@ -31,6 +31,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "runfile_name": "r_output_trec_rag_2026.tsv",
         "rag_output_name": "rag_output_trec_rag_2026.jsonl",
         "validation_report_name": "retrieval_validation_report.json",
+        "rag_validation_report_name": "rag_validation_report.json",
     },
     "evaluation": {
         "qrels_path": None,

@@ -12,6 +12,36 @@ def log_retrieval_run(
     metrics: dict[str, Any],
     artifacts: list[str | Path],
 ) -> str | None:
+    return _log_run(
+        config=config,
+        metrics=metrics,
+        artifacts=artifacts,
+        artifact_type="retrieval-run",
+        task="retrieval",
+    )
+
+
+def log_rag_run(
+    config: dict[str, Any],
+    metrics: dict[str, Any],
+    artifacts: list[str | Path],
+) -> str | None:
+    return _log_run(
+        config=config,
+        metrics=metrics,
+        artifacts=artifacts,
+        artifact_type="rag-run",
+        task="rag",
+    )
+
+
+def _log_run(
+    config: dict[str, Any],
+    metrics: dict[str, Any],
+    artifacts: list[str | Path],
+    artifact_type: str,
+    task: str,
+) -> str | None:
     load_env_file()
     try:
         import wandb
@@ -36,9 +66,9 @@ def log_retrieval_run(
     try:
         wandb.log(metrics)
         artifact = wandb.Artifact(
-            name=f"{config.get('experiment', {}).get('run_id', 'retrieval-run')}-outputs",
-            type="retrieval-run",
-            metadata={"task": "retrieval", "track_year": 2026},
+            name=f"{config.get('experiment', {}).get('run_id', artifact_type)}-outputs",
+            type=artifact_type,
+            metadata={"task": task, "track_year": 2026},
         )
         for artifact_path in artifacts:
             path = Path(artifact_path)

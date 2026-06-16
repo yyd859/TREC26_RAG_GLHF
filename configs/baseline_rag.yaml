@@ -1,10 +1,10 @@
 experiment:
-  name: baseline_title_top100
-  hypothesis: "A title-only BM25 query is the smallest useful retrieval baseline."
-  task: retrieval
+  name: baseline_rag_title_haiku45
+  hypothesis: "A title-only retrieval query plus Claude Haiku 4.5 is the smallest useful RAG baseline."
+  task: rag
   track_year: 2026
   team_id: glhf
-  run_id: glhf-title-top100
+  run_id: glhf-rag-title-haiku45
 
 data:
   topics_path: data/trec_rag_2026_queries.jsonl
@@ -13,7 +13,7 @@ retrieval:
   api_base_url: "http://99.251.12.72:8081"
   index: climbmix-400b
   query_template: "{title}"
-  hits: 100
+  hits: 20
   timeout_seconds: 30
 
 output:
@@ -33,14 +33,14 @@ evaluation:
     - mrr
 
 rag:
-  enabled: false
+  enabled: true
   evidence_top_k: 5
   generator_provider: anthropic_batch
   model: claude-haiku-4-5-20251001
   prompt_template: |
-    Answer the topic using only the provided ClimbMix evidence. Break the answer
-    into concise sentences and cite each sentence with the supporting reference
-    indices.
+    Answer the topic using only the provided ClimbMix evidence. Return concise
+    sentence-level claims. The references array must include only evidence
+    documents that are cited by at least one answer sentence.
   max_output_tokens: 800
 
 wandb:
@@ -49,10 +49,11 @@ wandb:
   mode: online
   tags:
     - baseline
-    - retrieval
+    - rag
+    - claude-haiku-4-5
     - climbmix-400b
     - dev
 
 optimization:
-  objective_metric: candidate_count_mean
-  objective_direction: maximize
+  objective_metric: rag_validation_error_count
+  objective_direction: minimize

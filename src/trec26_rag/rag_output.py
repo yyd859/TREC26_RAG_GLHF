@@ -56,6 +56,23 @@ def write_rag_jsonl(responses: Iterable[RagResponse], path: str | Path) -> None:
             handle.write("\n")
 
 
+def extract_answer_json_text(raw_text: str) -> str:
+    text = raw_text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    object_start = text.find("{")
+    object_end = text.rfind("}")
+    if object_start >= 0 and object_end >= object_start:
+        return text[object_start : object_end + 1]
+    return text
+
+
 def parse_answer_json(
     raw_text: str,
     topic: Topic,
@@ -64,7 +81,7 @@ def parse_answer_json(
     fallback_references: list[str],
     prompt: str | None = None,
 ) -> RagResponse:
-    payload = json.loads(raw_text)
+    payload = json.loads(extract_answer_json_text(raw_text))
     references = payload.get("references") or fallback_references
     answer_payload = payload.get("answer") or []
     if not isinstance(references, list):

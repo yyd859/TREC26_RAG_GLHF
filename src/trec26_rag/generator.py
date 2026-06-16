@@ -41,6 +41,12 @@ class BatchJob:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class BatchRequestAssignment:
+    custom_id: str
+    request: AnswerGenerationRequest
+
+
 def get_anthropic_api_key() -> str:
     load_env_file()
     token = os.environ.get("ANTHROPIC_API_KEY")
@@ -56,6 +62,20 @@ def safe_custom_id(topic_id: str) -> str:
     if not cleaned:
         cleaned = "topic"
     return cleaned[:64]
+
+
+def assign_custom_ids(
+    requests_to_generate: Iterable[AnswerGenerationRequest],
+) -> list[BatchRequestAssignment]:
+    assignments: list[BatchRequestAssignment] = []
+    seen_ids: set[str] = set()
+    for request in requests_to_generate:
+        custom_id = safe_custom_id(request.topic.id)
+        if custom_id in seen_ids:
+            custom_id = safe_custom_id(f"{request.topic.id}_{len(seen_ids)}")
+        seen_ids.add(custom_id)
+        assignments.append(BatchRequestAssignment(custom_id=custom_id, request=request))
+    return assignments
 
 
 def render_rag_prompt(
@@ -120,15 +140,11 @@ class AnthropicBatchAnswerGenerator:
         requests_to_generate: Iterable[AnswerGenerationRequest],
     ) -> list[dict[str, Any]]:
         batch_requests: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
-        for request in requests_to_generate:
-            custom_id = safe_custom_id(request.topic.id)
-            if custom_id in seen_ids:
-                custom_id = safe_custom_id(f"{request.topic.id}_{len(seen_ids)}")
-            seen_ids.add(custom_id)
+        for assignment in assign_custom_ids(requests_to_generate):
+            request = assignment.request
             batch_requests.append(
                 {
-                    "custom_id": custom_id,
+                    "custom_id": assignment.custom_id,
                     "params": {
                         "model": self.model,
                         "max_tokens": self.max_output_tokens,

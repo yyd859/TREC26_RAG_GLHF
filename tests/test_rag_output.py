@@ -8,6 +8,7 @@ from pathlib import Path
 from trec26_rag.rag_output import (
     AnswerSentence,
     RagResponse,
+    extract_answer_json_text,
     parse_answer_json,
     rag_response_to_json,
     write_rag_jsonl,
@@ -66,6 +67,21 @@ class RagOutputTest(unittest.TestCase):
         )
         self.assertEqual(response.references, ["doc-a"])
         self.assertEqual(response.answer[0].citations, [0])
+
+    def test_parse_answer_json_accepts_fenced_json(self) -> None:
+        topic = Topic("14", "Title", "Narrative")
+        response = parse_answer_json(
+            raw_text='```json\n{"answer":[{"text":"Answer sentence.","citations":[0]}]}\n```',
+            topic=topic,
+            team_id="glhf",
+            run_id="rag-run",
+            fallback_references=["doc-a"],
+        )
+        self.assertEqual(response.answer[0].text, "Answer sentence.")
+
+    def test_extract_answer_json_text_ignores_surrounding_text(self) -> None:
+        raw_text = 'Here is the JSON:\n{"answer":[]}\nDone.'
+        self.assertEqual(extract_answer_json_text(raw_text), '{"answer":[]}')
 
 
 if __name__ == "__main__":

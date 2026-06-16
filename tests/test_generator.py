@@ -11,6 +11,7 @@ from trec26_rag.generator import (
     AnswerGenerationRequest,
     AnswerGeneratorError,
     EvidenceDocument,
+    assign_custom_ids,
     parse_batch_results_jsonl,
     render_rag_prompt,
     safe_custom_id,
@@ -22,6 +23,21 @@ class GeneratorTest(unittest.TestCase):
     def test_safe_custom_id(self) -> None:
         self.assertEqual(safe_custom_id("topic:14/abc"), "topic_14_abc")
         self.assertLessEqual(len(safe_custom_id("x" * 100)), 64)
+
+    def test_assign_custom_ids_handles_duplicate_safe_ids(self) -> None:
+        requests = [
+            AnswerGenerationRequest(
+                topic=Topic("topic:14", "Title", "Narrative"),
+                evidence=[EvidenceDocument("doc-a", "Evidence text")],
+            ),
+            AnswerGenerationRequest(
+                topic=Topic("topic/14", "Title", "Narrative"),
+                evidence=[EvidenceDocument("doc-b", "Evidence text")],
+            ),
+        ]
+        assignments = assign_custom_ids(requests)
+        self.assertEqual(assignments[0].custom_id, "topic_14")
+        self.assertEqual(assignments[1].custom_id, "topic_14_1")
 
     def test_render_rag_prompt_includes_topic_and_evidence(self) -> None:
         request = AnswerGenerationRequest(

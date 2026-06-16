@@ -1,0 +1,47 @@
+name: Run RAG Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Config file to run"
+        required: true
+        default: "configs/baseline_rag.yaml"
+      limit:
+        description: "Optional topic limit for smoke runs"
+        required: false
+        default: ""
+
+jobs:
+  rag-baseline:
+    if: github.ref_name == 'main' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Prepare development topics
+        run: python scripts/prepare_dev_topics.py
+      - name: Run RAG baseline
+        env:
+          PYSERINI_API_TOKEN: ${{ secrets.PYSERINI_API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
+          WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
+        run: |
+          if [ -n "${{ inputs.limit }}" ]; then
+            python scripts/run_rag_baseline.py --config "${{ inputs.config }}" --limit "${{ inputs.limit }}" --log-wandb
+          else
+            python scripts/run_rag_baseline.py --config "${{ inputs.config }}" --log-wandb
+          fi
+      - name: Upload local outputs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rag-baseline-outputs
+          path: outputs/
