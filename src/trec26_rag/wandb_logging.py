@@ -26,12 +26,29 @@ def log_rag_run(
     metrics: dict[str, Any],
     artifacts: list[str | Path],
 ) -> str | None:
+    artifact_metadata = {
+        "valid_output": bool(metrics.get("rag_proxy_valid_output", 0)),
+        "validation_error_count": metrics.get("rag_validation_error_count", 0),
+        "validation_warning_count": metrics.get("rag_validation_warning_count", 0),
+        "proxy": {
+            "response_rate": metrics.get("rag_proxy_response_rate", 0.0),
+            "evidence_docs_mean": metrics.get("rag_proxy_evidence_docs_mean", 0.0),
+            "answer_words_mean": metrics.get("rag_proxy_answer_words_mean", 0.0),
+        },
+        "citation": {
+            "coverage_mean": metrics.get("rag_proxy_citation_coverage_mean", 0.0),
+            "density_mean": metrics.get("rag_proxy_citation_density_mean", 0.0),
+            "uncited_reference_rate": metrics.get("rag_proxy_uncited_reference_rate", 0.0),
+            "invalid_citation_rate": metrics.get("rag_proxy_invalid_citation_rate", 0.0),
+        },
+    }
     return _log_run(
         config=config,
         metrics=metrics,
         artifacts=artifacts,
         artifact_type="rag-run",
         task="rag",
+        artifact_metadata=artifact_metadata,
     )
 
 
@@ -41,6 +58,7 @@ def _log_run(
     artifacts: list[str | Path],
     artifact_type: str,
     task: str,
+    artifact_metadata: dict[str, Any] | None = None,
 ) -> str | None:
     load_env_file()
     try:
@@ -68,7 +86,11 @@ def _log_run(
         artifact = wandb.Artifact(
             name=f"{config.get('experiment', {}).get('run_id', artifact_type)}-outputs",
             type=artifact_type,
-            metadata={"task": task, "track_year": 2026},
+            metadata={
+                "task": task,
+                "track_year": 2026,
+                **(artifact_metadata or {}),
+            },
         )
         for artifact_path in artifacts:
             path = Path(artifact_path)

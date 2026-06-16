@@ -132,6 +132,130 @@ def build_rag_responses(
     return responses
 
 
+def build_citation_diagnostics(
+    responses: list[RagResponse],
+    validation_report: dict[str, Any],
+) -> dict[str, Any]:
+    validation_per_topic = validation_report.get("diagnostics", {}).get("per_topic", {})
+    per_topic: dict[str, dict[str, Any]] = {}
+    coverage_values: list[float] = []
+    density_values: list[float] = []
+    topics_without_citations = 0
+
+    for response in responses:
+        topic_id = response.topic.id
+        reference_count = len(response.references)
+        sentence_count = len(response.answer)
+        citation_count = sum(len(sentence.citations) for sentence in response.answer)
+        cited_indices = {
+            citation
+            for sentence in response.answer
+            for citation in sentence.citations
+            if 0 <= citation < reference_count
+        }
+        citation_coverage = len(cited_indices) / reference_count if reference_count else 0.0
+        citation_density = citation_count / sentence_count if sentence_count else 0.0
+        if citation_count == 0:
+            topics_without_citations += 1
+        coverage_values.append(citation_coverage)
+        density_values.append(citation_density)
+
+        uncited_reference_indices = sorted(set(range(reference_count)) - cited_indices)
+        answer_text = " ".join(sentence.text for sentence in response.answer)
+        per_topic[topic_id] = {
+            "reference_count": reference_count,
+            "cited_reference_count": len(cited_indices),
+            "uncited_reference_count": len(uncited_reference_indices),
+            "uncited_reference_indices": uncited_reference_indices,
+            "citation_count": citation_count,
+            "citation_coverage": citation_coverage,
+            "citation_density_per_sentence": citation_density,
+            "answer_sentence_count": sentence_count,
+            "answer_word_count": len(answer_text.split()),
+            "answer_char_count": len(answer_text),
+            "validator": validation_per_topic.get(topic_id, {}),
+        }
+
+    summary = {
+        "citation_coverage_mean": sum(coverage_values) / len(coverage_values)
+        if coverage_values
+        else 0.0,
+        "citation_coverage_min": min(coverage_values) if coverage_values else 0.0,
+        "citation_coverage_max": max(coverage_values) if coverage_values else 0.0,
+        "citation_density_mean": sum(density_values) / len(density_values)
+        if density_values
+        else 0.0,
+        "citation_density_min": min(density_values) if density_values else 0.0,
+        "citation_density_max": max(density_values) if density_values else 0.0,
+        "topics_without_citations": topics_without_citations,
+    }
+    return {"summary": summary, "per_topic": per_topic}
+
+
+def build_proxy_metrics(
+    answer_requests: list[AnswerGenerationRequest],
+    responses: list[RagResponse],
+    validation_report: dict[str, Any],
+    citation_diagnostics: dict[str, Any],
+) -> dict[str, Any]:
+    evidence_counts = [len(request.evidence) for request in answer_requests]
+    evidence_char_counts = [
+        sum(len(document.text) for document in request.evidence) for request in answer_requests
+    ]
+    answer_word_counts = [
+        topic["answer_word_count"]
+        for topic in citation_diagnostics.get("per_topic", {}).values()
+        if isinstance(topic, dict)
+    ]
+    validation_metrics = validation_report.get("metrics", {})
+    citation_summary = citation_diagnostics.get("summary", {})
+
+    response_count = len(responses)
+    expected_count = len(answer_requests)
+    metrics: dict[str, Any] = {
+        "rag_proxy_response_rate": response_count / expected_count if expected_count else 0.0,
+        "rag_proxy_evidence_docs_mean": sum(evidence_counts) / len(evidence_counts)
+        if evidence_counts
+        else 0.0,
+        "rag_proxy_evidence_docs_min": min(evidence_counts) if evidence_counts else 0,
+        "rag_proxy_evidence_docs_max": max(evidence_counts) if evidence_counts else 0,
+        "rag_proxy_evidence_chars_mean": sum(evidence_char_counts) / len(evidence_char_counts)
+        if evidence_char_counts
+        else 0.0,
+        "rag_proxy_evidence_chars_min": min(evidence_char_counts) if evidence_char_counts else 0,
+        "rag_proxy_evidence_chars_max": max(evidence_char_counts) if evidence_char_counts else 0,
+        "rag_proxy_answer_words_mean": sum(answer_word_counts) / len(answer_word_counts)
+        if answer_word_counts
+        else 0.0,
+        "rag_proxy_answer_words_min": min(answer_word_counts) if answer_word_counts else 0,
+        "rag_proxy_answer_words_max": max(answer_word_counts) if answer_word_counts else 0,
+        "rag_proxy_valid_output": 1 if validation_report.get("valid") else 0,
+        "rag_proxy_citation_coverage_mean": citation_summary.get("citation_coverage_mean", 0.0),
+        "rag_proxy_citation_density_mean": citation_summary.get("citation_density_mean", 0.0),
+        "rag_proxy_topics_without_citations": citation_summary.get("topics_without_citations", 0),
+        "rag_proxy_uncited_reference_rate": (
+            validation_metrics.get("rag_uncited_reference_count", 0)
+            / validation_metrics.get("rag_reference_count_total", 1)
+            if validation_metrics.get("rag_reference_count_total", 0)
+            else 0.0
+        ),
+        "rag_proxy_invalid_citation_rate": (
+            validation_metrics.get("rag_invalid_citation_count", 0)
+            / validation_metrics.get("rag_citation_count_total", 1)
+            if validation_metrics.get("rag_citation_count_total", 0)
+            else 0.0
+        ),
+    }
+    return metrics
+
+
+def write_json(path: str | Path, payload: dict[str, Any]) -> Path:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return output_path
+
+
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
@@ -148,6 +272,12 @@ def main() -> int:
     rag_output_path = Path(args.output) if args.output else output_dir / output_config["rag_output_name"]
     report_path = output_dir / output_config.get(
         "rag_validation_report_name", "rag_validation_report.json"
+    )
+    proxy_metrics_path = output_dir / output_config.get(
+        "rag_proxy_metrics_name", "rag_proxy_metrics.json"
+    )
+    citation_diagnostics_path = output_dir / output_config.get(
+        "rag_citation_diagnostics_name", "rag_citation_diagnostics.json"
     )
     raw_results_path = (
         Path(args.raw_results_output)
@@ -196,11 +326,34 @@ def main() -> int:
         "processing_status": final_status,
         "raw_results_path": str(raw_results_path),
     }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    citation_diagnostics = build_citation_diagnostics(responses, report)
+    proxy_metrics = build_proxy_metrics(
+        answer_requests=answer_requests,
+        responses=responses,
+        validation_report=report,
+        citation_diagnostics=citation_diagnostics,
+    )
+    metrics.update(proxy_metrics)
+    report["metrics"] = metrics
+    report["proxy_metrics"] = proxy_metrics
+    report["citation_diagnostics"] = citation_diagnostics
+    write_json(report_path, report)
+    write_json(proxy_metrics_path, proxy_metrics)
+    write_json(citation_diagnostics_path, citation_diagnostics)
 
     if args.log_wandb:
-        run_url = log_rag_run(config, metrics, [rag_output_path, report_path, raw_results_path, args.config])
+        run_url = log_rag_run(
+            config,
+            metrics,
+            [
+                rag_output_path,
+                report_path,
+                proxy_metrics_path,
+                citation_diagnostics_path,
+                raw_results_path,
+                args.config,
+            ],
+        )
         if run_url:
             print(f"W&B run: {run_url}")
 

@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from scripts.run_rag_baseline import build_generation_requests, build_rag_responses
+from scripts.run_rag_baseline import (
+    build_citation_diagnostics,
+    build_generation_requests,
+    build_proxy_metrics,
+    build_rag_responses,
+    write_json,
+)
 from trec26_rag.generator import AnswerGenerationRequest, EvidenceDocument
 from trec26_rag.pyserini_client import SearchHit
+from trec26_rag.rag_output import AnswerSentence, RagResponse
 from trec26_rag.runfile import Topic
 
 
@@ -66,6 +75,72 @@ class RunRagBaselineTest(unittest.TestCase):
         self.assertEqual(responses[0].topic.id, "topic:14")
         self.assertEqual(responses[0].references, ["doc-a"])
         self.assertEqual(responses[0].answer[0].citations, [0])
+
+    def test_build_citation_diagnostics_summarizes_per_topic_citations(self) -> None:
+        response = RagResponse(
+            topic=Topic("14", "Title", "Narrative"),
+            team_id="glhf",
+            run_id="rag-run",
+            references=["doc-a", "doc-b"],
+            answer=[AnswerSentence("Sentence one.", [0]), AnswerSentence("Sentence two.", [0])],
+        )
+        diagnostics = build_citation_diagnostics(
+            [response],
+            {
+                "diagnostics": {
+                    "per_topic": {
+                        "14": {
+                            "invalid_citation_count": 0,
+                            "uncited_reference_count": 1,
+                        }
+                    }
+                }
+            },
+        )
+        self.assertEqual(diagnostics["summary"]["citation_coverage_mean"], 0.5)
+        self.assertEqual(diagnostics["summary"]["citation_density_mean"], 1.0)
+        self.assertEqual(diagnostics["per_topic"]["14"]["uncited_reference_indices"], [1])
+        self.assertEqual(diagnostics["per_topic"]["14"]["validator"]["uncited_reference_count"], 1)
+
+    def test_build_proxy_metrics_includes_evidence_answer_and_citation_rates(self) -> None:
+        topic = Topic("14", "Title", "Narrative")
+        request = AnswerGenerationRequest(
+            topic=topic,
+            evidence=[
+                EvidenceDocument("doc-a", "Evidence one."),
+                EvidenceDocument("doc-b", "Evidence two."),
+            ],
+        )
+        response = RagResponse(
+            topic=topic,
+            team_id="glhf",
+            run_id="rag-run",
+            references=["doc-a", "doc-b"],
+            answer=[AnswerSentence("Answer sentence.", [0])],
+        )
+        validation_report = {
+            "valid": False,
+            "metrics": {
+                "rag_reference_count_total": 2,
+                "rag_uncited_reference_count": 1,
+                "rag_citation_count_total": 1,
+                "rag_invalid_citation_count": 0,
+            },
+            "diagnostics": {"per_topic": {}},
+        }
+        citation_diagnostics = build_citation_diagnostics([response], validation_report)
+        metrics = build_proxy_metrics([request], [response], validation_report, citation_diagnostics)
+        self.assertEqual(metrics["rag_proxy_response_rate"], 1.0)
+        self.assertEqual(metrics["rag_proxy_evidence_docs_mean"], 2.0)
+        self.assertEqual(metrics["rag_proxy_valid_output"], 0)
+        self.assertEqual(metrics["rag_proxy_uncited_reference_rate"], 0.5)
+        self.assertEqual(metrics["rag_proxy_invalid_citation_rate"], 0.0)
+
+    def test_write_json_creates_parent_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "nested" / "metrics.json"
+            write_json(path, {"metric": 1})
+            self.assertEqual(path.read_text(encoding="utf-8"), '{\n  "metric": 1\n}')
 
 
 if __name__ == "__main__":

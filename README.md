@@ -75,6 +75,16 @@ The RAG runner uses that path before submitting evidence to Anthropic Message
 Batches. It requires `PYSERINI_API_TOKEN` and `ANTHROPIC_API_KEY`; W&B logging
 also requires the W&B environment variables listed above.
 
+When `--log-wandb` is enabled, the RAG run logs scalar validator and proxy
+metrics plus a `rag-run` artifact containing:
+
+- `rag_output_trec_rag_2026.jsonl`
+- `rag_validation_report.json`
+- `rag_proxy_metrics.json`
+- `rag_citation_diagnostics.json`
+- `anthropic_batch_results.jsonl`
+- the config used for the run
+
 RAG JSONL validation is available with:
 
 ```bash

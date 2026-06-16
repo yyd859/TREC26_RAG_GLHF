@@ -32,6 +32,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "rag_output_name": "rag_output_trec_rag_2026.jsonl",
         "validation_report_name": "retrieval_validation_report.json",
         "rag_validation_report_name": "rag_validation_report.json",
+        "rag_proxy_metrics_name": "rag_proxy_metrics.json",
+        "rag_citation_diagnostics_name": "rag_citation_diagnostics.json",
     },
     "evaluation": {
         "qrels_path": None,

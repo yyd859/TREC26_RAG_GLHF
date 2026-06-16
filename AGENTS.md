@@ -51,6 +51,10 @@ Use `write_rag_jsonl(...)` for RAG submissions. The default output file is
 The RAG runner validates output with `validate_rag_jsonl(...)` before returning
 success, and the GitHub workflow uploads all files under `outputs/`.
 
+RAG W&B logging should include scalar proxy metrics, citation diagnostics, and
+a `rag-run` artifact with the RAG JSONL, validation report, proxy metrics JSON,
+citation diagnostics JSON, raw Anthropic batch results, and run config.
+
 ## Allowed Early Optimization Surface
 
 Early agent-generated experiments should change only:
