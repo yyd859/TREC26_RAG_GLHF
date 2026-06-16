@@ -87,6 +87,16 @@ class RagViewerTest(unittest.TestCase):
         payload = json.loads(html[start:end])
         self.assertTrue(payload["summary"]["valid"])
 
+    def test_render_rag_viewer_html_includes_compact_panel_controls(self) -> None:
+        html = render_rag_viewer_html({"summary": {"valid": True}, "topics": []})
+        self.assertIn('class="topic-picker"', html)
+        self.assertIn('class="topic-controls"', html)
+        self.assertIn('class="topic-select"', html)
+        self.assertIn('for="topic-select">Jump to topic</label>', html)
+        self.assertIn('aria-label="Filter topics"', html)
+        self.assertIn("@media (min-width: 760px)", html)
+        self.assertIn("Compact per-topic inspection", html)
+
     def test_render_rag_viewer_html_javascript_syntax(self) -> None:
         node = shutil.which("node")
         if node is None:
