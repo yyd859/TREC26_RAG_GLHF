@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import requests
 
@@ -18,6 +19,13 @@ class SearchHit:
     rank: int
     score: float
     doc: Any | None = None
+
+    @property
+    def text(self) -> str:
+        return extract_document_text(self.doc)
+
+    def has_sufficient_text(self, min_text_chars: int) -> bool:
+        return len(self.text) >= min_text_chars
 
 
 def load_env_file(path: str | Path = ".env.local") -> None:
@@ -77,6 +85,43 @@ class PyseriniClient:
             raise PyseriniClientError("Pyserini search response did not include a candidates list.")
         return [self._parse_hit(candidate, index) for index, candidate in enumerate(candidates, 1)]
 
+    def fetch_doc(self, docid: str) -> Any:
+        escaped_docid = quote(docid, safe="")
+        url = f"{self.base_url}/v1/{self.index}/doc/{escaped_docid}"
+        response = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {self.token}"},
+            timeout=self.timeout_seconds,
+        )
+        if response.status_code == 401:
+            raise PyseriniClientError(
+                "Pyserini authorization failed. The local token may be missing, expired, or invalid."
+            )
+        if response.status_code >= 400:
+            raise PyseriniClientError(
+                f"Pyserini document fetch failed with HTTP {response.status_code}: {response.text[:300]}"
+            )
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload.get("doc") or payload.get("document") or payload
+        return payload
+
+    def hydrate_hits(
+        self,
+        hits: list[SearchHit],
+        min_text_chars: int = 200,
+        max_docs: int | None = None,
+    ) -> list[SearchHit]:
+        hydrated: list[SearchHit] = []
+        fetch_budget = len(hits) if max_docs is None else max_docs
+        for hit in hits:
+            if fetch_budget > 0 and not hit.has_sufficient_text(min_text_chars):
+                hydrated.append(replace(hit, doc=self.fetch_doc(hit.docid)))
+                fetch_budget -= 1
+            else:
+                hydrated.append(hit)
+        return hydrated
+
     @staticmethod
     def _parse_hit(candidate: dict[str, Any], fallback_rank: int) -> SearchHit:
         docid = candidate.get("docid")
@@ -85,3 +130,46 @@ class PyseriniClient:
         rank = int(candidate.get("rank") or fallback_rank)
         score = float(candidate.get("score") or 0.0)
         return SearchHit(docid=str(docid), rank=rank, score=score, doc=candidate.get("doc"))
+
+
+def extract_document_text(payload: Any) -> str:
+    text = _extract_document_text(payload)
+    return " ".join(text.split())
+
+
+def _extract_document_text(payload: Any) -> str:
+    if payload is None:
+        return ""
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, (int, float, bool)):
+        return ""
+    if isinstance(payload, list):
+        return " ".join(filter(None, (extract_document_text(item) for item in payload)))
+    if isinstance(payload, dict):
+        preferred_keys = (
+            "text",
+            "contents",
+            "content",
+            "body",
+            "raw",
+            "passage",
+            "document",
+            "doc",
+        )
+        for key in preferred_keys:
+            if key in payload:
+                text = extract_document_text(payload[key])
+                if text:
+                    return text
+        return " ".join(
+            filter(
+                None,
+                (
+                    extract_document_text(value)
+                    for key, value in payload.items()
+                    if key not in {"id", "docid", "url", "rank", "score"}
+                ),
+            )
+        )
+    return ""

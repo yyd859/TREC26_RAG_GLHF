@@ -31,6 +31,26 @@ PYTHONPATH=src python -m unittest discover -s tests
 Level 2 should be treated as optional. If `evaluation.qrels_path` is null or
 missing, do not block the baseline run.
 
+## RAG Config
+
+The YAML config includes a `rag` section with `enabled`, `evidence_top_k`,
+`generator_provider`, `model`, `prompt_template`, and `max_output_tokens`.
+Current retrieval workflows should preserve this section but do not consume it
+until the RAG baseline runner is implemented.
+
+Use `PyseriniClient.hydrate_hits(...)` for RAG evidence preparation when search
+hits do not include enough document text. Do not duplicate ClimbMix document
+fetch logic in runner scripts.
+
+Use `AnthropicBatchAnswerGenerator` for the first RAG generator path. It uses
+Anthropic Message Batches by default with Claude Haiku 4.5 and requires
+`ANTHROPIC_API_KEY` only when generation is actually submitted.
+
+Use `write_rag_jsonl(...)` for RAG submissions. The default output file is
+`rag_output_trec_rag_2026.jsonl` under the configured output directory.
+Validate RAG output with `validate_rag_jsonl(...)` or `scripts/validate_rag_output.py`
+before logging or submitting artifacts.
+
 ## Allowed Early Optimization Surface
 
 Early agent-generated experiments should change only:

@@ -29,12 +29,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "output": {
         "output_dir": "outputs",
         "runfile_name": "r_output_trec_rag_2026.tsv",
+        "rag_output_name": "rag_output_trec_rag_2026.jsonl",
         "validation_report_name": "retrieval_validation_report.json",
     },
     "evaluation": {
         "qrels_path": None,
         "relevance_threshold": 1,
         "metrics": ["ndcg@10", "recall@100", "map", "mrr"],
+    },
+    "rag": {
+        "enabled": False,
+        "evidence_top_k": 5,
+        "generator_provider": "anthropic_batch",
+        "model": "claude-haiku-4-5-20251001",
+        "prompt_template": (
+            "Answer the topic using only the provided ClimbMix evidence. Break the answer "
+            "into concise sentences and cite each sentence with the supporting reference "
+            "indices."
+        ),
+        "max_output_tokens": 800,
     },
     "wandb": {
         "project": "trec26-rag-glhf",

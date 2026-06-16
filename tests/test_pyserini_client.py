@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import unittest
+from unittest.mock import Mock, patch
+
+from trec26_rag.pyserini_client import PyseriniClient, SearchHit, extract_document_text
+
+
+class PyseriniClientTest(unittest.TestCase):
+    def test_extract_document_text_handles_common_shapes(self) -> None:
+        self.assertEqual(extract_document_text({"text": "hello   world"}), "hello world")
+        self.assertEqual(extract_document_text({"doc": {"contents": "document body"}}), "document body")
+        self.assertEqual(
+            extract_document_text({"segments": [{"body": "first"}, {"body": "second"}]}),
+            "first second",
+        )
+
+    def test_fetch_doc_uses_doc_endpoint(self) -> None:
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"docid": "shard_1", "doc": {"contents": "full text"}}
+        with patch("trec26_rag.pyserini_client.requests.get", return_value=response) as get:
+            client = PyseriniClient("http://example.test", "climbmix-400b", token="token")
+            doc = client.fetch_doc("shard_1")
+        self.assertEqual(doc, {"contents": "full text"})
+        get.assert_called_once_with(
+            "http://example.test/v1/climbmix-400b/doc/shard_1",
+            headers={"Authorization": "Bearer token"},
+            timeout=30,
+        )
+
+    def test_hydrate_hits_fetches_when_text_is_missing_or_short(self) -> None:
+        hits = [
+            SearchHit("doc-a", 1, 10.0, {"contents": "short"}),
+            SearchHit("doc-b", 2, 9.0, {"contents": "already enough text"}),
+            SearchHit("doc-c", 3, 8.0, None),
+        ]
+        client = PyseriniClient("http://example.test", "climbmix-400b", token="token")
+        with patch.object(client, "fetch_doc", side_effect=[{"contents": "full text a"}]) as fetch_doc:
+            hydrated = client.hydrate_hits(hits, min_text_chars=10, max_docs=1)
+        self.assertEqual(hydrated[0].text, "full text a")
+        self.assertEqual(hydrated[1].text, "already enough text")
+        self.assertIsNone(hydrated[2].doc)
+        fetch_doc.assert_called_once_with("doc-a")
+
+
+if __name__ == "__main__":
+    unittest.main()
