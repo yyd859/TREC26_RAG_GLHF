@@ -30,6 +30,18 @@ class FakeRun:
         self.artifact = artifact
 
 
+class FakeTable:
+    def __init__(self, columns: list[str], data: list[list[object]]) -> None:
+        self.columns = columns
+        self.data = data
+
+
+class FakeHtml:
+    def __init__(self, path: str, inject: bool = True) -> None:
+        self.path = path
+        self.inject = inject
+
+
 class WandbLoggingTest(unittest.TestCase):
     def test_log_rag_run_adds_artifacts_and_metadata(self) -> None:
         fake_run = FakeRun()
@@ -38,6 +50,8 @@ class WandbLoggingTest(unittest.TestCase):
             init=lambda **kwargs: fake_run,
             log=lambda metrics: logged_metrics.append(metrics),
             Artifact=FakeArtifact,
+            Table=FakeTable,
+            Html=FakeHtml,
             finish=lambda: None,
         )
         original_wandb = sys.modules.get("wandb")
@@ -47,6 +61,8 @@ class WandbLoggingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_path = Path(tmpdir) / "rag_output_trec_rag_2026.jsonl"
             artifact_path.write_text("{}", encoding="utf-8")
+            viewer_path = Path(tmpdir) / "rag_viewer.html"
+            viewer_path.write_text("<html></html>", encoding="utf-8")
             run_url = log_rag_run(
                 config={
                     "experiment": {"name": "rag-test", "run_id": "rag-run"},
@@ -59,10 +75,21 @@ class WandbLoggingTest(unittest.TestCase):
                     "rag_proxy_citation_coverage_mean": 0.75,
                 },
                 artifacts=[artifact_path, Path(tmpdir) / "missing.json"],
+                tables={
+                    "rag_outputs": {
+                        "columns": ["topic_id", "answer_text"],
+                        "data": [["14", "Answer sentence."]],
+                    }
+                },
+                htmls={"rag_viewer": viewer_path},
             )
 
         self.assertEqual(run_url, "https://wandb.test/run")
         self.assertEqual(logged_metrics[0]["rag_proxy_response_rate"], 1.0)
+        self.assertEqual(logged_metrics[1]["rag_outputs"].columns, ["topic_id", "answer_text"])
+        self.assertEqual(logged_metrics[1]["rag_outputs"].data[0][0], "14")
+        self.assertEqual(logged_metrics[2]["rag_viewer"].path, str(viewer_path))
+        self.assertFalse(logged_metrics[2]["rag_viewer"].inject)
         self.assertIsNotNone(fake_run.artifact)
         assert fake_run.artifact is not None
         self.assertEqual(fake_run.artifact.type, "rag-run")

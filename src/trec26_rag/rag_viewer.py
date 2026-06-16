@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from html import escape
 from pathlib import Path
@@ -54,6 +55,69 @@ def build_rag_viewer_data(
         },
         "topics": rows,
     }
+
+
+def build_rag_table_rows(viewer_data: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for topic in viewer_data.get("topics", []):
+        diagnostics = topic.get("diagnostics", {})
+        validator = diagnostics.get("validator", {}) if isinstance(diagnostics, dict) else {}
+        rows.append(
+            {
+                "topic_id": topic.get("topic_id", ""),
+                "title": topic.get("title", ""),
+                "narrative": topic.get("narrative", ""),
+                "answer_text": topic.get("answer_text", ""),
+                "answer_json": json.dumps(topic.get("answer", []), ensure_ascii=False),
+                "references_json": json.dumps(topic.get("references", []), ensure_ascii=False),
+                "evidence_json": json.dumps(topic.get("evidence", []), ensure_ascii=False),
+                "citation_coverage": diagnostics.get("citation_coverage", 0.0),
+                "citation_density_per_sentence": diagnostics.get(
+                    "citation_density_per_sentence", 0.0
+                ),
+                "uncited_reference_count": diagnostics.get("uncited_reference_count", 0),
+                "invalid_citation_count": validator.get("invalid_citation_count", 0),
+                "answer_word_count": diagnostics.get("answer_word_count", 0),
+                "answer_sentence_count": diagnostics.get("answer_sentence_count", 0),
+            }
+        )
+    return rows
+
+
+def write_rag_table_jsonl(rows: list[dict[str, Any]], path: str | Path) -> Path:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False))
+            handle.write("\n")
+    return output_path
+
+
+def write_rag_table_csv(rows: list[dict[str, Any]], path: str | Path) -> Path:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    columns = [
+        "topic_id",
+        "title",
+        "narrative",
+        "answer_text",
+        "answer_json",
+        "references_json",
+        "evidence_json",
+        "citation_coverage",
+        "citation_density_per_sentence",
+        "uncited_reference_count",
+        "invalid_citation_count",
+        "answer_word_count",
+        "answer_sentence_count",
+    ]
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({column: row.get(column, "") for column in columns})
+    return output_path
 
 
 def write_rag_viewer_html(
@@ -321,23 +385,23 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
     const topics = DATA.topics || [];
     let selectedTopicId = topics[0]?.topic_id || null;
 
-    const fmt = (value) => {{
+    const fmt = (value) => {
       if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3);
       if (value === undefined || value === null || value === '') return 'n/a';
       return String(value);
-    }};
-    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({{
+    };
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-    }}[char]));
-    const truncate = (value, max = 160) => {{
+    }[char]));
+    const truncate = (value, max = 160) => {
       const text = String(value || '');
-      return text.length > max ? `${{text.slice(0, max)}}...` : text;
-    }};
+      return text.length > max ? `${text.slice(0, max)}...` : text;
+    };
 
-    function renderMetrics() {{
-      const summary = DATA.summary || {{}};
-      const metrics = summary.metrics || {{}};
-      const proxy = summary.proxy_metrics || {{}};
+    function renderMetrics() {
+      const summary = DATA.summary || {};
+      const metrics = summary.metrics || {};
+      const proxy = summary.proxy_metrics || {};
       const cards = [
         ['Valid output', summary.valid ? 'yes' : 'no'],
         ['Topics', metrics.requested_topics ?? metrics.rag_topic_count],
@@ -347,83 +411,83 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
         ['Response rate', proxy.rag_proxy_response_rate],
       ];
       document.getElementById('metrics').innerHTML = cards.map(([label, value]) => `
-        <div class="metric"><div class="label">${{escapeHtml(label)}}</div><div class="value">${{escapeHtml(fmt(value))}}</div></div>
+        <div class="metric"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(fmt(value))}</div></div>
       `).join('');
-    }}
+    }
 
-    function renderTopicList() {{
+    function renderTopicList() {
       const query = document.getElementById('search').value.toLowerCase();
       const filtered = topics.filter((topic) =>
-        `${{topic.topic_id}} ${{topic.title}} ${{topic.narrative}}`.toLowerCase().includes(query)
+        `${topic.topic_id} ${topic.title} ${topic.narrative}`.toLowerCase().includes(query)
       );
       document.getElementById('topic-list').innerHTML = filtered.map((topic) => `
-        <button class="topic-button ${{topic.topic_id === selectedTopicId ? 'active' : ''}}" data-topic-id="${{escapeHtml(topic.topic_id)}}">
-          <strong>${{escapeHtml(topic.title || topic.topic_id)}}</strong>
-          <span>${{escapeHtml(topic.topic_id)}} · ${{escapeHtml(truncate(topic.answer_text, 96))}}</span>
+        <button class="topic-button ${topic.topic_id === selectedTopicId ? 'active' : ''}" data-topic-id="${escapeHtml(topic.topic_id)}">
+          <strong>${escapeHtml(topic.title || topic.topic_id)}</strong>
+          <span>${escapeHtml(topic.topic_id)} · ${escapeHtml(truncate(topic.answer_text, 96))}</span>
         </button>
       `).join('') || '<p class="empty" style="padding: 0 14px;">No matching topics.</p>';
-      document.querySelectorAll('.topic-button').forEach((button) => {{
-        button.addEventListener('click', () => {{
+      document.querySelectorAll('.topic-button').forEach((button) => {
+        button.addEventListener('click', () => {
           selectedTopicId = button.dataset.topicId;
           renderTopicList();
           renderContent();
-        }});
-      }});
-    }}
+        });
+      });
+    }
 
-    function renderContent() {{
+    function renderContent() {
       const topic = topics.find((item) => item.topic_id === selectedTopicId);
-      if (!topic) {{
+      if (!topic) {
         document.getElementById('content').innerHTML = '<p class="empty">No topic selected.</p>';
         return;
-      }}
-      const diagnostics = topic.diagnostics || {{}};
-      const validator = diagnostics.validator || {{}};
+      }
+      const diagnostics = topic.diagnostics || {};
+      const validator = diagnostics.validator || {};
       const references = topic.references || [];
       const evidenceByDocId = Object.fromEntries((topic.evidence || []).map((doc) => [doc.docid, doc]));
       const answerHtml = (topic.answer || []).map((sentence, index) => `
         <div class="sentence">
-          <strong>${{index + 1}}.</strong> ${{escapeHtml(sentence.text)}}
-          ${(sentence.citations || []).map((citation) => `<span class="cite">ref ${{citation}}</span>`).join('')}
+          <strong>${index + 1}.</strong> ${escapeHtml(sentence.text)}
+          ${(sentence.citations || []).map((citation) => `<span class="cite">ref ${citation}</span>`).join('')}
         </div>
       `).join('') || '<p class="empty">No answer sentences.</p>';
-      const referenceHtml = references.map((docid, index) => {{
+      const referenceHtml = references.map((docid, index) => {
         const evidence = evidenceByDocId[docid];
         return `
           <div class="doc">
-            <div class="doc-id">[${{index}}] ${{escapeHtml(docid)}}</div>
-            <div class="doc-text">${{escapeHtml(evidence?.text || 'No evidence text captured for this reference.')}}</div>
+            <div class="doc-id">[${index}] ${escapeHtml(docid)}</div>
+            <div class="doc-text">${escapeHtml(evidence?.text || 'No evidence text captured for this reference.')}</div>
           </div>
         `;
-      }}).join('') || '<p class="empty">No references.</p>';
+      }).join('') || '<p class="empty">No references.</p>';
       document.getElementById('content').innerHTML = `
-        <div class="eyebrow">${{escapeHtml(topic.topic_id)}}</div>
-        <h2>${{escapeHtml(topic.title)}}</h2>
-        <p class="narrative">${{escapeHtml(topic.narrative)}}</p>
+        <div class="eyebrow">${escapeHtml(topic.topic_id)}</div>
+        <h2>${escapeHtml(topic.title)}</h2>
+        <p class="narrative">${escapeHtml(topic.narrative)}</p>
         <div class="grid">
           <div class="card">
             <h3>Answer</h3>
-            ${{answerHtml}}
+            ${answerHtml}
           </div>
           <div>
             <div class="card" style="margin-bottom: 16px;">
               <h3>Citation Diagnostics</h3>
               <div class="pill-row">
-                <span class="pill">coverage: ${{escapeHtml(fmt(diagnostics.citation_coverage))}}</span>
-                <span class="pill">density: ${{escapeHtml(fmt(diagnostics.citation_density_per_sentence))}}</span>
-                <span class="pill">uncited refs: ${{escapeHtml(fmt(diagnostics.uncited_reference_count))}}</span>
-                <span class="pill">invalid citations: ${{escapeHtml(fmt(validator.invalid_citation_count))}}</span>
-                <span class="pill">answer words: ${{escapeHtml(fmt(diagnostics.answer_word_count))}}</span>
+                <span class="pill">coverage: ${escapeHtml(fmt(diagnostics.citation_coverage))}</span>
+                <span class="pill">density: ${escapeHtml(fmt(diagnostics.citation_density_per_sentence))}</span>
+                <span class="pill">uncited refs: ${escapeHtml(fmt(diagnostics.uncited_reference_count))}</span>
+                <span class="pill">invalid citations: ${escapeHtml(fmt(validator.invalid_citation_count))}</span>
+                <span class="pill">answer words: ${escapeHtml(fmt(diagnostics.answer_word_count))}</span>
               </div>
             </div>
             <div class="card">
               <h3>References & Evidence</h3>
-              ${{referenceHtml}}
+              ${referenceHtml}
             </div>
           </div>
         </div>
       `;
-    }}
+    }
 
     document.getElementById('search').addEventListener('input', renderTopicList);
     renderMetrics();

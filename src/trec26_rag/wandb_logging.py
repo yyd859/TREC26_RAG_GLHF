@@ -25,6 +25,8 @@ def log_rag_run(
     config: dict[str, Any],
     metrics: dict[str, Any],
     artifacts: list[str | Path],
+    tables: dict[str, dict[str, Any]] | None = None,
+    htmls: dict[str, str | Path] | None = None,
 ) -> str | None:
     artifact_metadata = {
         "valid_output": bool(metrics.get("rag_proxy_valid_output", 0)),
@@ -49,6 +51,8 @@ def log_rag_run(
         artifact_type="rag-run",
         task="rag",
         artifact_metadata=artifact_metadata,
+        tables=tables,
+        htmls=htmls,
     )
 
 
@@ -59,6 +63,8 @@ def _log_run(
     artifact_type: str,
     task: str,
     artifact_metadata: dict[str, Any] | None = None,
+    tables: dict[str, dict[str, Any]] | None = None,
+    htmls: dict[str, str | Path] | None = None,
 ) -> str | None:
     load_env_file()
     try:
@@ -83,6 +89,19 @@ def _log_run(
     )
     try:
         wandb.log(metrics)
+        for table_name, table_payload in (tables or {}).items():
+            wandb.log(
+                {
+                    table_name: wandb.Table(
+                        columns=table_payload["columns"],
+                        data=table_payload["data"],
+                    )
+                }
+            )
+        for html_name, html_path in (htmls or {}).items():
+            path = Path(html_path)
+            if path.exists():
+                wandb.log({html_name: wandb.Html(str(path), inject=False)})
         artifact = wandb.Artifact(
             name=f"{config.get('experiment', {}).get('run_id', artifact_type)}-outputs",
             type=artifact_type,

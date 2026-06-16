@@ -83,8 +83,16 @@ metrics plus a `rag-run` artifact containing:
 - `rag_proxy_metrics.json`
 - `rag_citation_diagnostics.json`
 - `rag_viewer.html`
+- `rag_outputs_table.csv`
+- `rag_outputs_table.jsonl`
 - `anthropic_batch_results.jsonl`
 - the config used for the run
+
+The same per-topic rows are also logged to W&B as a table named
+`rag_outputs`, so a run can be inspected without downloading JSONL artifacts.
+The self-contained viewer is also logged as W&B HTML media named
+`rag_viewer`, so it can be opened from the run page as well as from the
+artifact snapshot.
 
 RAG JSONL validation is available with:
 

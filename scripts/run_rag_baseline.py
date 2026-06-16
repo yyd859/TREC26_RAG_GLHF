@@ -20,7 +20,13 @@ from trec26_rag.generator import (
 from trec26_rag.pyserini_client import PyseriniClient, SearchHit
 from trec26_rag.rag_output import RagResponse, parse_answer_json, write_rag_jsonl
 from trec26_rag.rag_validation import validate_rag_jsonl
-from trec26_rag.rag_viewer import write_rag_viewer_html
+from trec26_rag.rag_viewer import (
+    build_rag_table_rows,
+    build_rag_viewer_data,
+    render_rag_viewer_html,
+    write_rag_table_csv,
+    write_rag_table_jsonl,
+)
 from trec26_rag.runfile import Topic, read_topics, render_query
 from trec26_rag.wandb_logging import log_rag_run
 
@@ -281,6 +287,10 @@ def main() -> int:
         "rag_citation_diagnostics_name", "rag_citation_diagnostics.json"
     )
     viewer_path = output_dir / output_config.get("rag_viewer_name", "rag_viewer.html")
+    table_csv_path = output_dir / output_config.get("rag_table_csv_name", "rag_outputs_table.csv")
+    table_jsonl_path = output_dir / output_config.get(
+        "rag_table_jsonl_name", "rag_outputs_table.jsonl"
+    )
     raw_results_path = (
         Path(args.raw_results_output)
         if args.raw_results_output
@@ -342,14 +352,20 @@ def main() -> int:
     write_json(report_path, report)
     write_json(proxy_metrics_path, proxy_metrics)
     write_json(citation_diagnostics_path, citation_diagnostics)
-    write_rag_viewer_html(
-        path=viewer_path,
+    viewer_data = build_rag_viewer_data(
         answer_requests=answer_requests,
         responses=responses,
         validation_report=report,
         citation_diagnostics=citation_diagnostics,
         proxy_metrics=proxy_metrics,
     )
+    viewer_path.parent.mkdir(parents=True, exist_ok=True)
+    viewer_path.write_text(render_rag_viewer_html(viewer_data), encoding="utf-8")
+    table_rows = build_rag_table_rows(viewer_data)
+    write_rag_table_csv(table_rows, table_csv_path)
+    write_rag_table_jsonl(table_rows, table_jsonl_path)
+    table_columns = list(table_rows[0]) if table_rows else []
+    table_data = [[row.get(column, "") for column in table_columns] for row in table_rows]
 
     if args.log_wandb:
         run_url = log_rag_run(
@@ -361,9 +377,18 @@ def main() -> int:
                 proxy_metrics_path,
                 citation_diagnostics_path,
                 viewer_path,
+                table_csv_path,
+                table_jsonl_path,
                 raw_results_path,
                 args.config,
             ],
+            tables={
+                "rag_outputs": {
+                    "columns": table_columns,
+                    "data": table_data,
+                }
+            },
+            htmls={"rag_viewer": viewer_path},
         )
         if run_url:
             print(f"W&B run: {run_url}")
