@@ -163,6 +163,7 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
       --warn: #a76812;
       --bad: #a63232;
       --shadow: 0 24px 70px rgba(45, 34, 19, 0.16);
+      --page-pad: clamp(10px, 3vw, 24px);
     }
     * { box-sizing: border-box; }
     body {
@@ -176,82 +177,105 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
       min-height: 100vh;
     }
     header {
-      padding: 34px clamp(20px, 4vw, 56px) 18px;
+      padding: 12px var(--page-pad) 6px;
     }
     h1 {
-      margin: 0 0 8px;
+      margin: 0 0 3px;
       font-family: Georgia, "Times New Roman", serif;
-      font-size: clamp(2.1rem, 5vw, 4.8rem);
-      line-height: 0.95;
-      letter-spacing: -0.055em;
+      font-size: clamp(1.35rem, 7vw, 2.2rem);
+      line-height: 1;
+      letter-spacing: -0.045em;
     }
     .subtitle {
       color: var(--muted);
       max-width: 820px;
-      font-size: 1.03rem;
-      line-height: 1.5;
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.35;
     }
     .metrics {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
-      padding: 0 clamp(20px, 4vw, 56px) 20px;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 7px;
+      padding: 6px var(--page-pad) 10px;
     }
     .metric {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 15px 16px;
+      border-radius: 14px;
+      padding: 8px 10px;
       box-shadow: 0 10px 28px rgba(45, 34, 19, 0.08);
       backdrop-filter: blur(14px);
     }
     .metric .label {
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.62rem;
       text-transform: uppercase;
       letter-spacing: 0.10em;
     }
     .metric .value {
-      margin-top: 7px;
-      font-size: 1.5rem;
+      margin-top: 3px;
+      font-size: 1rem;
       font-weight: 760;
     }
     main {
       display: grid;
-      grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-      gap: 18px;
-      padding: 0 clamp(20px, 4vw, 56px) 40px;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      padding: 0 var(--page-pad) 18px;
     }
     aside, section.panel {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 28px;
+      border-radius: 18px;
       box-shadow: var(--shadow);
       backdrop-filter: blur(14px);
       overflow: hidden;
     }
+    .topic-picker {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .topic-controls {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.44);
+    }
+    .selector-label {
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 760;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+    }
+    .topic-select,
     .search {
-      width: calc(100% - 28px);
-      margin: 14px;
-      padding: 12px 13px;
+      width: 100%;
+      padding: 10px 11px;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 12px;
       color: var(--ink);
       background: rgba(255,255,255,0.78);
       font: inherit;
     }
+    .topic-select {
+      min-height: 42px;
+    }
     .topic-list {
-      max-height: 72vh;
+      max-height: 13rem;
       overflow: auto;
-      padding: 0 10px 12px;
+      padding: 6px 8px 8px;
     }
     .topic-button {
       display: block;
       width: 100%;
       border: 0;
-      border-radius: 18px;
-      margin: 6px 0;
-      padding: 13px 14px;
+      border-radius: 14px;
+      margin: 4px 0;
+      padding: 9px 10px;
       text-align: left;
       color: var(--ink);
       background: transparent;
@@ -263,56 +287,56 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
     }
     .topic-button strong {
       display: block;
-      font-size: 0.95rem;
-      margin-bottom: 4px;
+      font-size: 0.88rem;
+      margin-bottom: 2px;
     }
     .topic-button span {
       color: var(--muted);
-      font-size: 0.82rem;
+      font-size: 0.76rem;
     }
     .content {
-      padding: clamp(18px, 3vw, 34px);
+      padding: clamp(12px, 3vw, 24px);
     }
     .eyebrow {
       color: var(--accent-strong);
-      font-size: 0.78rem;
+      font-size: 0.70rem;
       font-weight: 760;
       letter-spacing: 0.11em;
       text-transform: uppercase;
     }
     h2 {
-      margin: 8px 0 10px;
+      margin: 5px 0 7px;
       font-family: Georgia, "Times New Roman", serif;
-      font-size: clamp(1.7rem, 3.2vw, 3rem);
+      font-size: clamp(1.35rem, 5.5vw, 2.25rem);
       letter-spacing: -0.035em;
     }
     .narrative {
       color: var(--muted);
-      line-height: 1.58;
-      margin-bottom: 22px;
+      line-height: 1.45;
+      margin: 0 0 13px;
     }
     .grid {
       display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
-      gap: 16px;
+      grid-template-columns: 1fr;
+      gap: 10px;
     }
     .card {
       border: 1px solid var(--line);
-      border-radius: 22px;
-      padding: 16px;
+      border-radius: 16px;
+      padding: 12px;
       background: rgba(255,255,255,0.58);
     }
     .card h3 {
-      margin: 0 0 12px;
-      font-size: 0.86rem;
+      margin: 0 0 8px;
+      font-size: 0.74rem;
       text-transform: uppercase;
       letter-spacing: 0.10em;
       color: var(--muted);
     }
     .sentence {
-      padding: 13px 0;
+      padding: 10px 0;
       border-top: 1px solid var(--line);
-      line-height: 1.55;
+      line-height: 1.45;
     }
     .sentence:first-of-type { border-top: 0; }
     .cite {
@@ -326,7 +350,7 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
       font-weight: 700;
     }
     .doc {
-      padding: 12px 0;
+      padding: 10px 0;
       border-top: 1px solid var(--line);
     }
     .doc:first-of-type { border-top: 0; }
@@ -338,7 +362,7 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
     }
     .doc-text {
       color: var(--muted);
-      margin-top: 7px;
+      margin-top: 5px;
       line-height: 1.45;
       max-height: 8.7rem;
       overflow: auto;
@@ -346,33 +370,100 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
     .pill-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
     }
     .pill {
       border-radius: 999px;
-      padding: 7px 10px;
+      padding: 6px 8px;
       background: rgba(24,33,31,0.06);
-      font-size: 0.84rem;
+      font-size: 0.78rem;
     }
     .empty {
       color: var(--muted);
       font-style: italic;
     }
-    @media (max-width: 920px) {
-      main, .grid { grid-template-columns: 1fr; }
-      .topic-list { max-height: 260px; }
+    @media (min-width: 760px) {
+      :root { --page-pad: clamp(20px, 4vw, 56px); }
+      header { padding-top: 24px; padding-bottom: 12px; }
+      h1 { font-size: clamp(2.1rem, 5vw, 4.8rem); }
+      .subtitle { font-size: 1.03rem; line-height: 1.5; }
+      .metrics {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        padding-bottom: 20px;
+      }
+      .metric {
+        border-radius: 20px;
+        padding: 15px 16px;
+      }
+      .metric .label { font-size: 0.74rem; }
+      .metric .value {
+        margin-top: 7px;
+        font-size: 1.5rem;
+      }
+      main {
+        grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+        gap: 18px;
+        padding-bottom: 40px;
+      }
+      aside, section.panel { border-radius: 28px; }
+      .topic-picker {
+        position: static;
+        align-self: start;
+      }
+      .topic-list {
+        max-height: 72vh;
+        padding: 0 10px 12px;
+      }
+      .topic-button {
+        border-radius: 18px;
+        margin: 6px 0;
+        padding: 13px 14px;
+      }
+      .topic-button strong {
+        font-size: 0.95rem;
+        margin-bottom: 4px;
+      }
+      .topic-button span { font-size: 0.82rem; }
+      .content { padding: clamp(18px, 3vw, 34px); }
+      .eyebrow { font-size: 0.78rem; }
+      h2 { font-size: clamp(1.7rem, 3.2vw, 3rem); }
+      .narrative {
+        line-height: 1.58;
+        margin-bottom: 22px;
+      }
+      .grid {
+        grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+        gap: 16px;
+      }
+      .card {
+        border-radius: 22px;
+        padding: 16px;
+      }
+      .card h3 {
+        margin-bottom: 12px;
+        font-size: 0.86rem;
+      }
+      .sentence {
+        padding: 13px 0;
+        line-height: 1.55;
+      }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>RAG Run Viewer</h1>
-    <p class="subtitle">Per-topic inspection for generated answers, citations, evidence, and validation diagnostics. This file is a self-contained snapshot of one experiment run.</p>
+    <p class="subtitle">Compact per-topic inspection for generated answers, citations, evidence, and validation diagnostics.</p>
   </header>
   <div class="metrics" id="metrics"></div>
   <main>
-    <aside>
-      <input class="search" id="search" placeholder="Filter topics...">
+    <aside class="topic-picker" aria-label="Topic picker">
+      <div class="topic-controls">
+        <label class="selector-label" for="topic-select">Jump to topic</label>
+        <select class="topic-select" id="topic-select" aria-label="Jump to topic"></select>
+        <input class="search" id="search" placeholder="Filter topics..." aria-label="Filter topics">
+      </div>
       <div class="topic-list" id="topic-list"></div>
     </aside>
     <section class="panel">
@@ -420,6 +511,10 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
       const filtered = topics.filter((topic) =>
         `${topic.topic_id} ${topic.title} ${topic.narrative}`.toLowerCase().includes(query)
       );
+      document.getElementById('topic-select').innerHTML = topics.map((topic) => `
+        <option value="${escapeHtml(topic.topic_id)}">${escapeHtml(topic.topic_id)} - ${escapeHtml(topic.title || 'Untitled topic')}</option>
+      `).join('');
+      document.getElementById('topic-select').value = selectedTopicId || '';
       document.getElementById('topic-list').innerHTML = filtered.map((topic) => `
         <button class="topic-button ${topic.topic_id === selectedTopicId ? 'active' : ''}" data-topic-id="${escapeHtml(topic.topic_id)}">
           <strong>${escapeHtml(topic.title || topic.topic_id)}</strong>
@@ -490,6 +585,11 @@ def render_rag_viewer_html(data: dict[str, Any]) -> str:
     }
 
     document.getElementById('search').addEventListener('input', renderTopicList);
+    document.getElementById('topic-select').addEventListener('change', (event) => {
+      selectedTopicId = event.target.value;
+      renderTopicList();
+      renderContent();
+    });
     renderMetrics();
     renderTopicList();
     renderContent();
