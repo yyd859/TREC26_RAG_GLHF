@@ -56,6 +56,40 @@ def write_rag_jsonl(responses: Iterable[RagResponse], path: str | Path) -> None:
             handle.write("\n")
 
 
+def keep_cited_references_only(response: RagResponse) -> RagResponse:
+    cited_indices = sorted(
+        {
+            citation
+            for sentence in response.answer
+            for citation in sentence.citations
+            if 0 <= citation < len(response.references)
+        }
+    )
+    if not cited_indices or len(cited_indices) == len(response.references):
+        return response
+
+    index_mapping = {old_index: new_index for new_index, old_index in enumerate(cited_indices)}
+    return RagResponse(
+        topic=response.topic,
+        team_id=response.team_id,
+        run_id=response.run_id,
+        references=[response.references[index] for index in cited_indices],
+        answer=[
+            AnswerSentence(
+                text=sentence.text,
+                citations=[
+                    index_mapping[citation]
+                    for citation in sentence.citations
+                    if citation in index_mapping
+                ],
+            )
+            for sentence in response.answer
+        ],
+        run_type=response.run_type,
+        prompt=response.prompt,
+    )
+
+
 def extract_answer_json_text(raw_text: str) -> str:
     text = raw_text.strip()
     if text.startswith("```"):

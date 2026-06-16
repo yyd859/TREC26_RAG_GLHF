@@ -18,7 +18,12 @@ from trec26_rag.generator import (
     render_rag_prompt,
 )
 from trec26_rag.pyserini_client import PyseriniClient, SearchHit
-from trec26_rag.rag_output import RagResponse, parse_answer_json, write_rag_jsonl
+from trec26_rag.rag_output import (
+    RagResponse,
+    keep_cited_references_only,
+    parse_answer_json,
+    write_rag_jsonl,
+)
 from trec26_rag.rag_validation import validate_rag_jsonl
 from trec26_rag.rag_viewer import (
     build_rag_table_rows,
@@ -325,6 +330,7 @@ def main() -> int:
     generator.download_results_jsonl(batch_id, raw_results_path)
     batch_results = parse_batch_results_jsonl(raw_results_path)
     responses = build_rag_responses(answer_requests, batch_results, config)
+    responses = [keep_cited_references_only(response) for response in responses]
     write_rag_jsonl(responses, rag_output_path)
 
     report = validate_rag_jsonl(rag_output_path, topic_ids={topic.id for topic in topics})
