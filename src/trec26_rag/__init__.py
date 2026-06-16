@@ -8,6 +8,7 @@ __all__ = [
     "pyserini_client",
     "rag_output",
     "rag_validation",
+    "rag_viewer",
     "runfile",
     "wandb_logging",
 ]

@@ -53,7 +53,8 @@ success, and the GitHub workflow uploads all files under `outputs/`.
 
 RAG W&B logging should include scalar proxy metrics, citation diagnostics, and
 a `rag-run` artifact with the RAG JSONL, validation report, proxy metrics JSON,
-citation diagnostics JSON, raw Anthropic batch results, and run config.
+citation diagnostics JSON, a self-contained `rag_viewer.html`, raw Anthropic
+batch results, and run config.
 
 ## Allowed Early Optimization Surface
 

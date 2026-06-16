@@ -20,6 +20,7 @@ from trec26_rag.generator import (
 from trec26_rag.pyserini_client import PyseriniClient, SearchHit
 from trec26_rag.rag_output import RagResponse, parse_answer_json, write_rag_jsonl
 from trec26_rag.rag_validation import validate_rag_jsonl
+from trec26_rag.rag_viewer import write_rag_viewer_html
 from trec26_rag.runfile import Topic, read_topics, render_query
 from trec26_rag.wandb_logging import log_rag_run
 
@@ -279,6 +280,7 @@ def main() -> int:
     citation_diagnostics_path = output_dir / output_config.get(
         "rag_citation_diagnostics_name", "rag_citation_diagnostics.json"
     )
+    viewer_path = output_dir / output_config.get("rag_viewer_name", "rag_viewer.html")
     raw_results_path = (
         Path(args.raw_results_output)
         if args.raw_results_output
@@ -340,6 +342,14 @@ def main() -> int:
     write_json(report_path, report)
     write_json(proxy_metrics_path, proxy_metrics)
     write_json(citation_diagnostics_path, citation_diagnostics)
+    write_rag_viewer_html(
+        path=viewer_path,
+        answer_requests=answer_requests,
+        responses=responses,
+        validation_report=report,
+        citation_diagnostics=citation_diagnostics,
+        proxy_metrics=proxy_metrics,
+    )
 
     if args.log_wandb:
         run_url = log_rag_run(
@@ -350,6 +360,7 @@ def main() -> int:
                 report_path,
                 proxy_metrics_path,
                 citation_diagnostics_path,
+                viewer_path,
                 raw_results_path,
                 args.config,
             ],
@@ -362,6 +373,7 @@ def main() -> int:
             {
                 "rag_output": str(rag_output_path),
                 "report": str(report_path),
+                "viewer": str(viewer_path),
                 "batch_id": batch_id,
                 **metrics,
             },

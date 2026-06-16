@@ -82,6 +82,7 @@ metrics plus a `rag-run` artifact containing:
 - `rag_validation_report.json`
 - `rag_proxy_metrics.json`
 - `rag_citation_diagnostics.json`
+- `rag_viewer.html`
 - `anthropic_batch_results.jsonl`
 - the config used for the run
 
