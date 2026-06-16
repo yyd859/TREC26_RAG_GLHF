@@ -14,7 +14,6 @@ on:
 
 jobs:
   rag-baseline:
-    if: github.ref_name == 'main' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
