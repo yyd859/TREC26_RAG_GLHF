@@ -10,6 +10,7 @@ from trec26_rag.rag_output import (
     RagResponse,
     extract_answer_json_text,
     keep_cited_references_only,
+    normalize_answer_references,
     parse_answer_json,
     rag_response_to_json,
     write_rag_jsonl,
@@ -68,6 +69,22 @@ class RagOutputTest(unittest.TestCase):
         )
         self.assertEqual(response.references, ["doc-a"])
         self.assertEqual(response.answer[0].citations, [0])
+
+    def test_parse_answer_json_maps_numeric_reference_strings_to_fallback_docids(self) -> None:
+        topic = Topic("14", "Title", "Narrative")
+        response = parse_answer_json(
+            raw_text='{"references":["0","2"],"answer":[{"text":"Answer.","citations":[0,1]}]}',
+            topic=topic,
+            team_id="glhf",
+            run_id="rag-run",
+            fallback_references=["doc-a", "doc-b", "doc-c"],
+        )
+        self.assertEqual(response.references, ["doc-a", "doc-c"])
+        self.assertEqual(response.answer[0].citations, [0, 1])
+
+    def test_normalize_answer_references_keeps_non_numeric_references(self) -> None:
+        references = normalize_answer_references(["doc-a", "doc-b"], ["fallback-a"])
+        self.assertEqual(references, ["doc-a", "doc-b"])
 
     def test_parse_answer_json_accepts_fenced_json(self) -> None:
         topic = Topic("14", "Title", "Narrative")

@@ -116,10 +116,8 @@ def parse_answer_json(
     prompt: str | None = None,
 ) -> RagResponse:
     payload = json.loads(extract_answer_json_text(raw_text))
-    references = payload.get("references") or fallback_references
+    references = normalize_answer_references(payload.get("references"), fallback_references)
     answer_payload = payload.get("answer") or []
-    if not isinstance(references, list):
-        raise ValueError("RAG answer payload references must be a list.")
     if not isinstance(answer_payload, list):
         raise ValueError("RAG answer payload answer must be a list.")
     answer = [
@@ -138,3 +136,24 @@ def parse_answer_json(
         answer=answer,
         prompt=prompt,
     )
+
+
+def normalize_answer_references(raw_references: Any, fallback_references: list[str]) -> list[str]:
+    if raw_references is None:
+        return fallback_references
+    if not isinstance(raw_references, list):
+        raise ValueError("RAG answer payload references must be a list.")
+
+    references = [str(reference) for reference in raw_references]
+    if not references:
+        return fallback_references
+
+    numeric_indices: list[int] = []
+    for reference in references:
+        if not reference.isdigit():
+            return references
+        numeric_indices.append(int(reference))
+
+    if all(0 <= index < len(fallback_references) for index in numeric_indices):
+        return [fallback_references[index] for index in numeric_indices]
+    return references
