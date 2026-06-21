@@ -13,6 +13,7 @@ from trec26_rag.autoresearch import (
     build_autoresearch_summary,
     changed_config_keys,
     compare_url,
+    experiment_branch_name,
     find_secret_like_values,
     is_path_allowed,
     load_autoresearch_policy,
@@ -20,6 +21,7 @@ from trec26_rag.autoresearch import (
     propose_config_for_route,
     route_for,
     select_current_best_run,
+    slugify_branch_component,
     summarize_best_run,
     summarize_runs,
     validate_changed_paths,
@@ -38,6 +40,8 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual(route_for(policy, "rag").workflow, "run-rag-baseline.yml")
         self.assertEqual(route_for(policy, "evaluation-only").mode, "evaluation_only")
         self.assertEqual(route_for(policy, "proposer-only").mode, "proposer_only")
+        self.assertFalse(policy.review_requires_pr)
+        self.assertEqual(policy.branch_prefix, "codex/autoresearch-")
 
     def test_path_allowlist_accepts_only_experiment_configs(self) -> None:
         policy = load_autoresearch_policy("configs/autoresearch.yaml")
@@ -240,6 +244,18 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual(
             compare_url(policy, "codex/autoresearch-v1"),
             "https://github.com/yyd859/TREC26_RAG_GLHF/compare/main...codex/autoresearch-v1",
+        )
+
+    def test_experiment_branch_name_uses_safe_slug(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+
+        self.assertEqual(
+            slugify_branch_component("2026 Next/Thing!"),
+            "2026-next-thing",
+        )
+        self.assertEqual(
+            experiment_branch_name(policy, "configs/experiments/20260621_Title Boosted.yaml"),
+            "codex/autoresearch-20260621_title-boosted",
         )
 
     def test_build_dispatch_payload_uses_route_defaults(self) -> None:

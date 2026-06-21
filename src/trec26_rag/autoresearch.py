@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -51,6 +52,16 @@ class AutoresearchPolicy:
     def review_requires_pr(self) -> bool:
         review = self.raw.get("review", {})
         return bool(isinstance(review, dict) and review.get("require_pr", True))
+
+    @property
+    def branch_prefix(self) -> str:
+        branching = self.raw.get("branching", {})
+        if isinstance(branching, dict) and branching.get("experiment_branch_prefix"):
+            return str(branching["experiment_branch_prefix"])
+        review = self.raw.get("review", {})
+        if isinstance(review, dict) and review.get("pr_branch_prefix"):
+            return str(review["pr_branch_prefix"])
+        return "codex/autoresearch-"
 
     @property
     def github_repository(self) -> str:
@@ -339,6 +350,89 @@ def propose_config_for_route(
     if errors:
         raise ValueError("Unsafe autoresearch proposal: " + "; ".join(errors))
     return output_path
+
+
+def slugify_branch_component(value: str, max_length: int = 80) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower()).strip("-._")
+    slug = re.sub(r"-{2,}", "-", slug)
+    return (slug or "experiment")[:max_length].rstrip("-._")
+
+
+def experiment_branch_name(policy: AutoresearchPolicy, proposal_path: str | Path) -> str:
+    stem = Path(proposal_path).stem
+    return f"{policy.branch_prefix}{slugify_branch_component(stem)}"
+
+
+def run_git(args: list[str], cwd: str | Path = ".") -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return result.stdout.strip()
+
+
+def commit_and_push_experiment_branch(
+    policy: AutoresearchPolicy,
+    proposal_path: str | Path,
+    branch_name: str | None = None,
+    base_ref: str | None = None,
+) -> dict[str, Any]:
+    proposal = Path(proposal_path)
+    branch = branch_name or experiment_branch_name(policy, proposal)
+    if base_ref:
+        run_git(["fetch", "origin", base_ref])
+        run_git(["checkout", "-B", branch, f"origin/{base_ref}"])
+    else:
+        run_git(["checkout", "-B", branch])
+    run_git(["add", proposal.as_posix()])
+    run_git(["commit", "-m", f"Add autoresearch config {proposal.stem}"])
+    run_git(["push", "-u", "origin", branch])
+    return {"branch": branch, "proposal": proposal.as_posix()}
+
+
+def run_branch_iteration(
+    policy: AutoresearchPolicy,
+    route_name: str,
+    ref: str | None = None,
+    limit: str | None = None,
+    output_dir: str | Path = "configs/experiments",
+    token: str | None = None,
+) -> dict[str, Any]:
+    decision = route_for(policy, route_name)
+    proposal_path = propose_config_for_route(
+        policy=policy,
+        route_name=route_name,
+        output_dir=output_dir,
+    )
+    errors = validate_proposal_file(proposal_path, policy)
+    if route_name in {"retrieval", "rag", "evaluation-only"}:
+        errors.extend(validate_config_delta(decision.base_config, proposal_path, policy))
+    if errors:
+        raise ValueError("Unsafe autoresearch branch iteration: " + "; ".join(errors))
+    branch_result = commit_and_push_experiment_branch(
+        policy=policy,
+        proposal_path=proposal_path,
+        base_ref=ref or policy.github_base_branch,
+    )
+    dispatch_payload = dispatch_route(
+        policy=policy,
+        route_name=route_name,
+        config_path=proposal_path.as_posix(),
+        ref=branch_result["branch"],
+        limit=limit,
+        token=token,
+    )
+    return {
+        "route": route_name,
+        "proposal": proposal_path.as_posix(),
+        "branch": branch_result["branch"],
+        "workflow": dispatch_payload["workflow"],
+        "dispatch": dispatch_payload,
+    }
 
 
 class GitHubActionsClient:

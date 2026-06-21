@@ -2,14 +2,15 @@ runner:
   selected: github_actions
   rationale: >
     Start with GitHub Actions because the project already uses manual
-    workflow_dispatch runs, repository secrets, branch review, and W&B logging.
-    This keeps v1 code-centric and reviewable. Self-hosted GPU runners, local
+    workflow_dispatch runs, repository secrets, branch-scoped experiments, and
+    W&B logging. This keeps v1 code-centric while letting the agent iterate
+    without waiting for config PR merges. Self-hosted GPU runners, local
     long-running agents, Modal, RunPod, and Codex automations remain candidate
     backends once experiment volume or GPU needs justify another scheduler.
   options:
     github_actions_scheduled_manual:
       status: selected_v1
-      tradeoffs: "Lowest integration cost; inherits GitHub review gates; limited as a long-running agent."
+      tradeoffs: "Lowest integration cost; runs branch-native iterations; limited as a long-running agent."
     self_hosted_github_runner:
       status: candidate_gpu
       tradeoffs: "Best next step for GPU work; requires runner lifecycle and secret hygiene."
@@ -21,7 +22,7 @@ runner:
       tradeoffs: "Modal/RunPod can scale compute; needs extra job and storage plumbing."
     codex_automation:
       status: candidate_orchestration
-      tradeoffs: "Useful for periodic thought loops if available; still should emit config-only PRs."
+      tradeoffs: "Useful for periodic thought loops if available; should still keep config-only branch commits."
 
 allowed_paths:
   - configs/experiments/
@@ -73,8 +74,14 @@ objective:
   fallback_direction: maximize
 
 review:
-  require_pr: true
+  require_pr: false
   pr_branch_prefix: codex/autoresearch-
+
+branching:
+  mode: direct_branch_iteration
+  experiment_branch_prefix: codex/autoresearch-
+  require_pr_for_iteration: false
+  promote_via_pr: true
 
 github:
   repository: yyd859/TREC26_RAG_GLHF

@@ -19,6 +19,7 @@ from trec26_rag.autoresearch import (
     open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
+    run_branch_iteration,
     select_current_best_run,
     summarize_runs,
     validate_changed_paths,
@@ -52,6 +53,15 @@ def parse_args() -> argparse.Namespace:
     dispatch.add_argument("--config", required=True)
     dispatch.add_argument("--ref")
     dispatch.add_argument("--limit")
+
+    iterate = subparsers.add_parser(
+        "iterate",
+        help="Create a new experiment branch, commit a config proposal, and dispatch its workflow.",
+    )
+    iterate.add_argument("--route", default="retrieval")
+    iterate.add_argument("--ref")
+    iterate.add_argument("--limit")
+    iterate.add_argument("--output-dir", default="configs/experiments")
 
     open_pr = subparsers.add_parser("open-pr", help="Open the autoresearch bootstrap PR.")
     open_pr.add_argument("--head", default="codex/autoresearch-v1")
@@ -153,6 +163,17 @@ def main() -> int:
             config_path=args.config,
             ref=args.ref,
             limit=args.limit,
+        )
+        print(dumps_json(result))
+        return 0
+
+    if args.command == "iterate":
+        result = run_branch_iteration(
+            policy=policy,
+            route_name=args.route,
+            ref=args.ref,
+            limit=args.limit,
+            output_dir=args.output_dir,
         )
         print(dumps_json(result))
         return 0
