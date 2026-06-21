@@ -104,6 +104,35 @@ the local agent is the orchestrator brain, GitHub Actions is the default CPU
 runner, and self-hosted GPU runners, Modal/RunPod/Vast, and Codex automations
 remain candidate compute/orchestration backends.
 
+## External GPU Runner
+
+Use GitHub-hosted `ubuntu-latest` for routine retrieval/RAG API baselines. Use
+Vast AI only for experiments that need local GPU compute, such as local reranker
+or generator tests.
+
+The repository includes **GPU Runner Smoke**, which targets:
+
+```yaml
+runs-on: [self-hosted, linux, x64, gpu, vast-ai]
+```
+
+Register Vast AI machines as ephemeral self-hosted runners with at least the
+custom labels `gpu` and `vast-ai`:
+
+```bash
+./config.sh \
+  --url https://github.com/yyd859/TREC26_RAG_GLHF \
+  --token <GITHUB_GENERATED_RUNNER_TOKEN> \
+  --labels gpu,vast-ai,cuda \
+  --ephemeral
+./run.sh
+```
+
+Prefer ephemeral rented runners and destroy the Vast instance after the job.
+Do not route unreviewed or unrelated jobs to self-hosted GPU runners, because
+jobs on that runner can access the checkout and any secrets made available to
+the workflow.
+
 Autoresearch safety rules:
 
 - Generated files must stay under `configs/experiments/`.

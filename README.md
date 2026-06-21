@@ -33,6 +33,42 @@ WANDB_ENTITY=...
 
 Do not commit `.env.local` or `.curlrc.pyserini-rest`.
 
+## External GPU Runner
+
+Use a Vast AI GPU instance as a GitHub self-hosted runner when an experiment
+needs local GPU compute. Keep normal retrieval/RAG baselines on
+`ubuntu-latest`; route GPU-only jobs to a runner labeled `gpu` and `vast-ai`.
+
+The first smoke-test workflow is **GPU Runner Smoke**. It targets:
+
+```yaml
+runs-on: [self-hosted, linux, x64, gpu, vast-ai]
+```
+
+Recommended setup:
+
+1. Create a Vast AI instance from an NVIDIA CUDA/PyTorch image with enough disk
+   for the model/cache you want to test.
+2. In GitHub, open repository **Settings -> Actions -> Runners -> New
+   self-hosted runner** and copy the Linux x64 setup commands.
+3. On the Vast instance, run the generated download/config commands, but add
+   labels and make the runner ephemeral:
+
+```bash
+./config.sh \
+  --url https://github.com/yyd859/TREC26_RAG_GLHF \
+  --token <GITHUB_GENERATED_RUNNER_TOKEN> \
+  --labels gpu,vast-ai,cuda \
+  --ephemeral
+./run.sh
+```
+
+4. Trigger **Actions -> GPU Runner Smoke**. A healthy runner should show
+   `nvidia-smi`, install the package, and pass unit tests.
+5. Stop or destroy the Vast instance after the job. Treat rented self-hosted
+   runners as disposable because they can access repository checkout contents
+   and workflow secrets used by jobs routed to them.
+
 ## Run The Retrieval Baseline
 
 Put development topics at `data/trec_rag_2026_queries.jsonl`, then run:
