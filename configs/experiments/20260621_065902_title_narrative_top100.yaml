@@ -20,6 +20,9 @@ retrieval:
   api_base_url: http://99.251.12.72:8081
   query_template: '{title} {narrative}'
   timeout_seconds: null
+  max_retries: 5
+  retry_backoff_seconds: 1.0
+  min_request_interval_seconds: 1.0
 experiment:
   name: 20260621_065902_title_narrative_top100
   task: retrieval

@@ -312,6 +312,11 @@ def main() -> int:
         base_url=config["retrieval"]["api_base_url"],
         index=config["retrieval"]["index"],
         timeout_seconds=optional_timeout_seconds(config["retrieval"].get("timeout_seconds")),
+        max_retries=int(config["retrieval"].get("max_retries", 5)),
+        retry_backoff_seconds=float(config["retrieval"].get("retry_backoff_seconds", 1.0)),
+        min_request_interval_seconds=float(
+            config["retrieval"].get("min_request_interval_seconds", 1.0)
+        ),
     )
     generator = AnthropicBatchAnswerGenerator.from_config(config)
 

@@ -25,6 +25,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "query_template": "{title}",
         "hits": 100,
         "timeout_seconds": None,
+        "max_retries": 5,
+        "retry_backoff_seconds": 1.0,
+        "min_request_interval_seconds": 1.0,
     },
     "output": {
         "output_dir": "outputs",

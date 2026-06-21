@@ -32,6 +32,7 @@ class PyseriniClientTest(unittest.TestCase):
     def test_search_uses_explicit_timeout_when_configured(self) -> None:
         response = Mock()
         response.status_code = 200
+        response.headers = {}
         response.json.return_value = {"candidates": [{"docid": "doc-a", "score": 1.0}]}
         with patch("trec26_rag.pyserini_client.requests.get", return_value=response) as get:
             client = PyseriniClient(
@@ -48,6 +49,32 @@ class PyseriniClientTest(unittest.TestCase):
             headers={"Authorization": "Bearer token"},
             timeout=120,
         )
+
+    def test_search_retries_retryable_status_with_backoff(self) -> None:
+        overloaded = Mock()
+        overloaded.status_code = 429
+        overloaded.headers = {"Retry-After": "1"}
+        overloaded.text = "slow down"
+        ok = Mock()
+        ok.status_code = 200
+        ok.headers = {}
+        ok.json.return_value = {"candidates": [{"docid": "doc-a", "score": 1.0}]}
+        with (
+            patch("trec26_rag.pyserini_client.requests.get", side_effect=[overloaded, ok]) as get,
+            patch("trec26_rag.pyserini_client.time.sleep") as sleep,
+        ):
+            client = PyseriniClient(
+                "http://example.test",
+                "climbmix-400b",
+                token="token",
+                max_retries=1,
+                retry_backoff_seconds=1.0,
+                min_request_interval_seconds=0,
+            )
+            hits = client.search("query", hits=10)
+        self.assertEqual(hits[0].docid, "doc-a")
+        self.assertEqual(get.call_count, 2)
+        sleep.assert_called_once_with(1.0)
 
     def test_hydrate_hits_fetches_when_text_is_missing_or_short(self) -> None:
         hits = [
