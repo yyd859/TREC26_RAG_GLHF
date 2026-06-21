@@ -596,6 +596,9 @@ def apply_runtime_limit(proposal_path: str | Path, limit: str | None) -> None:
         runtime = {}
         config["runtime"] = runtime
     runtime["limit"] = str(limit)
+    retrieval = config.setdefault("retrieval", {})
+    if isinstance(retrieval, dict) and retrieval.get("timeout_seconds") in (None, ""):
+        retrieval["timeout_seconds"] = 30
     write_config(config, proposal_path)
 
 

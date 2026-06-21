@@ -36,6 +36,7 @@ approved_config_keys:
   - experiment.task
   - retrieval.query_template
   - retrieval.hits
+  - retrieval.timeout_seconds
   - evaluation.qrels_path
   - evaluation.relevance_threshold
   - rag.evidence_top_k

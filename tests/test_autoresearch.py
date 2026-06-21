@@ -37,7 +37,7 @@ from trec26_rag.autoresearch import (
     validate_proposal_file,
     workflow_limit_for_config,
 )
-from trec26_rag.config import write_config
+from trec26_rag.config import load_config, write_config
 from trec26_rag.experiment_optimizer import RunRecord
 
 
@@ -323,6 +323,8 @@ class AutoresearchTest(unittest.TestCase):
             apply_runtime_limit(config_path, "2")
 
             self.assertEqual(workflow_limit_for_config(policy, config_path), "2")
+            self.assertEqual(load_config(config_path)["retrieval"]["timeout_seconds"], 30)
+            self.assertEqual(route_name_for_config(policy, config_path), "retrieval")
             self.assertEqual(validate_config_delta("configs/baseline_retrieval.yaml", config_path, policy), [])
 
     def test_latest_changed_experiment_config_falls_back_to_newest_file(self) -> None:
