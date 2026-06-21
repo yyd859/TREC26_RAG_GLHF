@@ -250,6 +250,12 @@ GitHub Actions also has **Autoresearch Orchestrator**, which can:
 - dispatch a reviewed config to the retrieval/RAG workflow
 - monitor the latest workflow status
 
+Bootstrap note: a newly added workflow such as `autoresearch.yml` must be
+merged to the repository default branch before it reliably appears in the
+GitHub Actions UI for manual dispatch. If the GitHub connector or local CLI
+cannot create the first PR because of permissions, open a compare PR manually
+from the pushed feature branch, then use the workflow after it lands on `main`.
+
 For workflow dispatch from inside another GitHub workflow, add
 `AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the
 target workflow in this repository.

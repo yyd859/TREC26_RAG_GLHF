@@ -74,6 +74,11 @@ Autoresearch safety rules:
 - Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot
   dispatch another workflow.
 
+Bootstrap note: new workflow files usually need to land on the default branch
+before they appear in the GitHub Actions UI for manual dispatch. If automation
+cannot open the initial PR because of GitHub app permissions, open the compare
+PR manually from the pushed feature branch and continue the loop after merge.
+
 ## Evaluation Layers
 
 - `Level 0`: validator checks runfile format, complete topic coverage, rank order, and score order.
