@@ -641,7 +641,11 @@ def propose_config_for_route(
 def apply_runtime_limit(proposal_path: str | Path, limit: str | None) -> None:
     if limit in (None, ""):
         return
-    config = load_config(proposal_path)
+    path = Path(proposal_path)
+    with path.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    if not isinstance(config, dict):
+        raise ValueError(f"Config must be a mapping: {path}")
     runtime = config.setdefault("runtime", {})
     if not isinstance(runtime, dict):
         runtime = {}
