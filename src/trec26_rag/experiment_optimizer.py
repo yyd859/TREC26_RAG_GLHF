@@ -110,10 +110,24 @@ def propose_next_config(
             selected_template = template
             break
     if selected_template is None:
+        for depth in range(300, 2100, 100):
+            retrieval = {"query_template": "{title} {narrative}", "hits": depth}
+            candidate = deep_merge(parent_config, {"retrieval": retrieval})
+            if config_signature(candidate) not in existing_signatures:
+                selected_template = {
+                    "suffix": f"title_narrative_top{depth}",
+                    "hypothesis": (
+                        "The first template set is exhausted; try a deeper title plus "
+                        "narrative retrieval pool."
+                    ),
+                    "retrieval": retrieval,
+                }
+                break
+    if selected_template is None:
         selected_template = {
-            "suffix": "title_narrative_top300",
-            "hypothesis": "The first template set is exhausted; try a deeper title plus narrative retrieval pool.",
-            "retrieval": {"query_template": "{title} {narrative}", "hits": 300},
+            "suffix": "title_narrative_top2100",
+            "hypothesis": "All standard depths are exhausted; continue one deeper title plus narrative pool.",
+            "retrieval": {"query_template": "{title} {narrative}", "hits": 2100},
         }
 
     timestamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d_%H%M%S")
