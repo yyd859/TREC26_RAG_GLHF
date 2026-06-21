@@ -26,6 +26,33 @@ class ExperimentOptimizerTest(unittest.TestCase):
         self.assertEqual(config["retrieval"]["hits"], 100)
         self.assertIn("proposed", config["wandb"]["tags"])
 
+    def test_propose_next_config_preserves_new_base_defaults_with_old_runs(self) -> None:
+        base_config = {
+            **DEFAULT_CONFIG,
+            "retrieval": {
+                **DEFAULT_CONFIG["retrieval"],
+                "retry_backoff_seconds": 1.0,
+                "max_retries": 5,
+            },
+        }
+        old_run = RunRecord(
+            "old",
+            "old",
+            None,
+            {
+                "experiment": {"name": "old", "run_id": "old"},
+                "retrieval": {"query_template": "{title}", "hits": 100},
+                "wandb": {"tags": ["retrieval"]},
+            },
+            {"candidate_count_mean": 100, "validation_error_count": 0},
+            [],
+        )
+
+        config = propose_next_config(base_config, [old_run])
+
+        self.assertEqual(config["retrieval"]["retry_backoff_seconds"], 1.0)
+        self.assertEqual(config["retrieval"]["max_retries"], 5)
+
 
 if __name__ == "__main__":
     unittest.main()

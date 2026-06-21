@@ -99,7 +99,7 @@ def propose_next_config(
     metric = optimization.get("objective_metric", "candidate_count_mean")
     direction = optimization.get("objective_direction", "maximize")
     best_run = select_best_run(runs, metric, direction)
-    parent_config = best_run.config if best_run else base_config
+    parent_config = deep_merge(base_config, best_run.config) if best_run else base_config
     existing_signatures = {config_signature(run.config) for run in runs}
     existing_signatures.add(config_signature(base_config))
 
