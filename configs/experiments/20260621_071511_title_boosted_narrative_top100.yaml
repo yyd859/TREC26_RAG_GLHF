@@ -1,0 +1,35 @@
+data:
+  topics_path: data/trec_rag_2026_queries.jsonl
+wandb:
+  mode: online
+  tags:
+  - baseline
+  - climbmix-400b
+  - dev
+  - proposed
+  - retrieval
+  entity: null
+  project: trec26-rag-glhf
+output:
+  output_dir: outputs
+  runfile_name: r_output_trec_rag_2026.tsv
+  validation_report_name: retrieval_validation_report.json
+retrieval:
+  hits: 100
+  index: climbmix-400b
+  api_base_url: http://99.251.12.72:8081
+  query_template: '{title} {title} {narrative}'
+  timeout_seconds: 30
+experiment:
+  name: 20260621_071511_title_boosted_narrative_top100
+  task: retrieval
+  run_id: glhf-title-boosted-narrative-top100
+  team_id: glhf
+  hypothesis: Repeating the title while adding narrative may preserve precision while
+    improving recall.
+  track_year: 2026
+  parent_wandb_run_id: zeomdmnb
+  parent_wandb_run_url: https://wandb.ai/yyd859-capital-one/trec26-rag-glhf/runs/zeomdmnb
+optimization:
+  objective_metric: candidate_count_mean
+  objective_direction: maximize
