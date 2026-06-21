@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import tempfile
 from pathlib import Path
 
 from trec26_rag.autoresearch import (
+    GitHubWorkflowRun,
+    build_dispatch_payload,
     GitHubActionsClient,
     build_autoresearch_summary,
     compare_url,
@@ -56,6 +59,11 @@ def parse_args() -> argparse.Namespace:
     open_pr.add_argument("--base")
     open_pr.add_argument("--title", default="Add autoresearch orchestrator v1")
     open_pr.add_argument("--ready", action="store_true", help="Create a non-draft PR.")
+
+    dry_run = subparsers.add_parser("dry-run", help="Run a local no-network autoresearch simulation.")
+    dry_run.add_argument("--route", default="retrieval")
+    dry_run.add_argument("--ref", default="main")
+    dry_run.add_argument("--limit")
 
     monitor = subparsers.add_parser("monitor", help="Summarize recent GitHub Actions status.")
     monitor.add_argument("--route", required=True)
@@ -210,6 +218,57 @@ def main() -> int:
             fallback = compare_url(policy, args.head, args.base)
             print(dumps_json({"error": str(exc), "manual_compare_url": fallback}))
             return 1
+
+    if args.command == "dry-run":
+        with tempfile.TemporaryDirectory(prefix="autoresearch-", dir="configs/experiments") as output_dir:
+            proposal_path = propose_config_for_route(
+                policy=policy,
+                route_name=args.route,
+                runs=[],
+                output_dir=output_dir,
+            )
+            check_errors = validate_proposal_file(proposal_path, policy)
+            check_errors.extend(
+                validate_config_delta(route_for(policy, args.route).base_config, proposal_path, policy)
+            )
+            dispatch_payload = build_dispatch_payload(
+                policy=policy,
+                route_name=args.route,
+                config_path=proposal_path.as_posix(),
+                ref=args.ref,
+                limit=args.limit,
+            )
+            workflow_summary = summarize_runs(
+                [
+                    GitHubWorkflowRun(
+                        id=0,
+                        name=f"Dry-run {args.route}",
+                        status="completed",
+                        conclusion="success" if not check_errors else "failure",
+                        html_url=None,
+                        head_branch=args.ref,
+                        head_sha=None,
+                    )
+                ]
+            )
+            summary = build_autoresearch_summary(
+                policy=policy,
+                route_name=args.route,
+                workflow_summary=workflow_summary,
+                wandb_runs=[],
+            )
+            print(
+                dumps_json(
+                    {
+                        "valid": not check_errors,
+                        "proposal": proposal_path.as_posix(),
+                        "errors": check_errors,
+                        "dispatch": dispatch_payload,
+                        "summary": summary,
+                    }
+                )
+            )
+            return 0 if not check_errors else 1
 
     if args.command == "monitor":
         decision = route_for(policy, args.route)

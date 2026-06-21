@@ -37,8 +37,15 @@ python scripts/autoresearch.py best-run
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
+python scripts/autoresearch.py dry-run --route retrieval --ref main
+python scripts/autoresearch.py dry-run --route rag --ref main
 python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
 ```
+
+Use `dry-run` before touching GitHub/W&B. It performs a local no-network
+simulation that creates a temporary proposal under `configs/experiments/`,
+validates safety constraints, builds the workflow dispatch payload, and emits a
+monitor-style summary.
 
 After a config PR is reviewed and merged, dispatch the matching workflow with:
 

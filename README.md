@@ -222,8 +222,15 @@ python scripts/autoresearch.py best-run
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
+python scripts/autoresearch.py dry-run --route retrieval --ref main
+python scripts/autoresearch.py dry-run --route rag --ref main
 python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
 ```
+
+`dry-run` is a no-network local simulation. It creates a temporary proposal
+under `configs/experiments/`, validates policy constraints, builds the workflow
+dispatch payload, and emits the same monitor summary shape used by real runs.
+Use it before relying on GitHub/W&B credentials.
 
 After a generated config PR is reviewed and merged, trigger the matching
 workflow:

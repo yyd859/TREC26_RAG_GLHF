@@ -457,15 +457,27 @@ def dispatch_route(
     if route_name in {"retrieval", "rag", "evaluation-only"} and errors:
         raise ValueError("Unsafe config path for dispatch: " + "; ".join(errors))
     client = GitHubActionsClient(policy.github_repository, token=token)
+    payload = build_dispatch_payload(policy, route_name, config_path, ref=ref, limit=limit)
+    client.dispatch_workflow(
+        workflow=payload["workflow"],
+        ref=payload["ref"],
+        inputs=payload["inputs"],
+    )
+    return payload
+
+
+def build_dispatch_payload(
+    policy: AutoresearchPolicy,
+    route_name: str,
+    config_path: str,
+    ref: str | None = None,
+    limit: str | None = None,
+) -> dict[str, Any]:
+    decision = route_for(policy, route_name)
     workflow_inputs = {"config": config_path}
     selected_limit = decision.default_limit if limit is None else str(limit)
     if selected_limit:
         workflow_inputs["limit"] = selected_limit
-    client.dispatch_workflow(
-        workflow=decision.workflow,
-        ref=ref or policy.github_base_branch,
-        inputs=workflow_inputs,
-    )
     return {
         "route": route_name,
         "workflow": decision.workflow,

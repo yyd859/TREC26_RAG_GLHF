@@ -9,6 +9,7 @@ import yaml
 from trec26_rag.autoresearch import (
     GitHubPullRequest,
     GitHubWorkflowRun,
+    build_dispatch_payload,
     build_autoresearch_summary,
     changed_config_keys,
     compare_url,
@@ -240,6 +241,20 @@ class AutoresearchTest(unittest.TestCase):
             compare_url(policy, "codex/autoresearch-v1"),
             "https://github.com/yyd859/TREC26_RAG_GLHF/compare/main...codex/autoresearch-v1",
         )
+
+    def test_build_dispatch_payload_uses_route_defaults(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+
+        payload = build_dispatch_payload(
+            policy=policy,
+            route_name="rag",
+            config_path="configs/experiments/rag.yaml",
+        )
+
+        self.assertEqual(payload["workflow"], "run-rag-baseline.yml")
+        self.assertEqual(payload["ref"], "main")
+        self.assertEqual(payload["inputs"]["config"], "configs/experiments/rag.yaml")
+        self.assertEqual(payload["inputs"]["limit"], "2")
 
 
 if __name__ == "__main__":
