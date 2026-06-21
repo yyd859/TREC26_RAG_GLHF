@@ -26,6 +26,7 @@ from trec26_rag.autoresearch import (
     propose_config_for_route,
     route_for,
     route_name_for_config,
+    restore_unapproved_config_changes,
     save_research_memory,
     select_current_best_run,
     slugify_branch_component,
@@ -122,6 +123,29 @@ class AutoresearchTest(unittest.TestCase):
             ),
             {"retrieval.hits"},
         )
+
+    def test_restore_unapproved_config_changes_keeps_only_policy_surface(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        base = {
+            "retrieval": {
+                "query_template": "{title}",
+                "hits": 100,
+                "max_retries": 5,
+            }
+        }
+        proposal = {
+            "retrieval": {
+                "query_template": "{title} {narrative}",
+                "hits": 200,
+                "max_retries": 8,
+            }
+        }
+
+        restored = restore_unapproved_config_changes(base, proposal, policy)
+
+        self.assertEqual(restored["retrieval"]["query_template"], "{title} {narrative}")
+        self.assertEqual(restored["retrieval"]["hits"], 200)
+        self.assertEqual(restored["retrieval"]["max_retries"], 5)
 
     def test_propose_config_for_route_writes_safe_experiment_config(self) -> None:
         policy = load_autoresearch_policy("configs/autoresearch.yaml")

@@ -217,6 +217,60 @@ def changed_config_keys(base: Any, proposal: Any, prefix: str = "") -> set[str]:
     return set()
 
 
+_MISSING = object()
+
+
+def get_nested_config_value(config: dict[str, Any], path: str) -> Any:
+    current: Any = config
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return _MISSING
+        current = current[part]
+    return current
+
+
+def set_nested_config_value(config: dict[str, Any], path: str, value: Any) -> None:
+    current: dict[str, Any] = config
+    parts = path.split(".")
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[parts[-1]] = value
+
+
+def delete_nested_config_value(config: dict[str, Any], path: str) -> None:
+    current: Any = config
+    parts = path.split(".")
+    for part in parts[:-1]:
+        if not isinstance(current, dict) or part not in current:
+            return
+        current = current[part]
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
+def restore_unapproved_config_changes(
+    base_config: dict[str, Any],
+    proposal_config: dict[str, Any],
+    policy: AutoresearchPolicy,
+) -> dict[str, Any]:
+    approved = policy.approved_config_keys
+    if not approved:
+        return proposal_config
+    for key in sorted(changed_config_keys(base_config, proposal_config)):
+        if key in approved:
+            continue
+        base_value = get_nested_config_value(base_config, key)
+        if base_value is _MISSING:
+            delete_nested_config_value(proposal_config, key)
+        else:
+            set_nested_config_value(proposal_config, key, base_value)
+    return proposal_config
+
+
 def validate_config_delta(
     base_config_path: str | Path,
     proposal_path: str | Path,
@@ -523,6 +577,7 @@ def propose_config_for_route(
     base_config = load_config(base_config_path or decision.base_config)
     proposal = propose_next_config(base_config, proposal_runs)
     proposal["experiment"]["task"] = decision.task
+    proposal = restore_unapproved_config_changes(base_config, proposal, policy)
     output_path = Path(output_dir) / f"{proposal['experiment']['name']}.yaml"
     write_config(proposal, output_path)
     errors = validate_proposal_file(output_path, policy)
