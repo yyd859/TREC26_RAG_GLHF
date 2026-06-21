@@ -19,7 +19,7 @@ retrieval:
   index: climbmix-400b
   api_base_url: http://99.251.12.72:8081
   query_template: '{title} {narrative}'
-  timeout_seconds: 30
+  timeout_seconds: null
 experiment:
   name: 20260621_065902_title_narrative_top100
   task: retrieval
