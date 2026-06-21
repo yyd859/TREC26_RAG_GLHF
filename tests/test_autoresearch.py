@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import os
 from pathlib import Path
 
 import yaml
@@ -335,8 +336,8 @@ class AutoresearchTest(unittest.TestCase):
             new_path = Path(output_dir) / "new.yaml"
             write_config({"experiment": {"task": "retrieval"}}, old_path)
             write_config({"experiment": {"task": "rag"}, "rag": {"enabled": True}}, new_path)
-            old_path.touch()
-            new_path.touch()
+            os.utime(old_path, (1, 1))
+            os.utime(new_path, (4_102_444_800, 4_102_444_800))
 
             latest = latest_changed_experiment_config(policy, ref="missing-ref")
 
