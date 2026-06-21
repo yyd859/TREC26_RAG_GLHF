@@ -1,0 +1,35 @@
+data:
+  topics_path: data/trec_rag_2026_queries.jsonl
+wandb:
+  mode: online
+  tags:
+  - baseline
+  - climbmix-400b
+  - dev
+  - proposed
+  - retrieval
+  entity: null
+  project: trec26-rag-glhf
+output:
+  output_dir: outputs
+  runfile_name: r_output_trec_rag_2026.tsv
+  validation_report_name: retrieval_validation_report.json
+retrieval:
+  hits: 100
+  index: climbmix-400b
+  api_base_url: http://99.251.12.72:8081
+  query_template: '{title} {narrative}'
+  timeout_seconds: 30
+experiment:
+  name: 20260621_065902_title_narrative_top100
+  task: retrieval
+  run_id: glhf-title-narrative-top100
+  team_id: glhf
+  hypothesis: Adding the narrative to the title query may improve recall over title-only
+    retrieval.
+  track_year: 2026
+  parent_wandb_run_id: zeomdmnb
+  parent_wandb_run_url: https://wandb.ai/yyd859-capital-one/trec26-rag-glhf/runs/zeomdmnb
+optimization:
+  objective_metric: candidate_count_mean
+  objective_direction: maximize
