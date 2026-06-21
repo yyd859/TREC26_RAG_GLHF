@@ -13,6 +13,12 @@ from trec26_rag.runfile import RunRow, read_topics, render_query, validate_runfi
 from trec26_rag.wandb_logging import log_retrieval_run
 
 
+def optional_timeout_seconds(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the TREC RAG 2026 retrieval baseline.")
     parser.add_argument("--config", default="configs/baseline_retrieval.yaml")
@@ -40,7 +46,7 @@ def main() -> int:
     client = PyseriniClient(
         base_url=retrieval_config["api_base_url"],
         index=retrieval_config["index"],
-        timeout_seconds=int(retrieval_config.get("timeout_seconds", 30)),
+        timeout_seconds=optional_timeout_seconds(retrieval_config.get("timeout_seconds")),
     )
 
     started_at = time.monotonic()

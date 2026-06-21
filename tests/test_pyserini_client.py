@@ -26,7 +26,27 @@ class PyseriniClientTest(unittest.TestCase):
         get.assert_called_once_with(
             "http://example.test/v1/climbmix-400b/doc/shard_1",
             headers={"Authorization": "Bearer token"},
-            timeout=30,
+            timeout=None,
+        )
+
+    def test_search_uses_explicit_timeout_when_configured(self) -> None:
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"candidates": [{"docid": "doc-a", "score": 1.0}]}
+        with patch("trec26_rag.pyserini_client.requests.get", return_value=response) as get:
+            client = PyseriniClient(
+                "http://example.test",
+                "climbmix-400b",
+                token="token",
+                timeout_seconds=120,
+            )
+            hits = client.search("query", hits=10)
+        self.assertEqual(hits[0].docid, "doc-a")
+        get.assert_called_once_with(
+            "http://example.test/v1/climbmix-400b/search",
+            params={"query": "query", "hits": 10},
+            headers={"Authorization": "Bearer token"},
+            timeout=120,
         )
 
     def test_hydrate_hits_fetches_when_text_is_missing_or_short(self) -> None:

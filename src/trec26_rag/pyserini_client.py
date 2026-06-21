@@ -56,7 +56,7 @@ class PyseriniClient:
         base_url: str,
         index: str,
         token: str | None = None,
-        timeout_seconds: int = 30,
+        timeout_seconds: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.index = index

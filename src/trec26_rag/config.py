@@ -24,7 +24,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "index": "climbmix-400b",
         "query_template": "{title}",
         "hits": 100,
-        "timeout_seconds": 30,
+        "timeout_seconds": None,
     },
     "output": {
         "output_dir": "outputs",

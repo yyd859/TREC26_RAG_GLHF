@@ -39,6 +39,12 @@ from trec26_rag.wandb_logging import log_rag_run
 TERMINAL_BATCH_STATUSES = {"ended", "canceled", "expired"}
 
 
+def optional_timeout_seconds(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the TREC RAG 2026 RAG baseline.")
     parser.add_argument("--config", default="configs/baseline_rag.yaml")
@@ -305,7 +311,7 @@ def main() -> int:
     client = PyseriniClient(
         base_url=config["retrieval"]["api_base_url"],
         index=config["retrieval"]["index"],
-        timeout_seconds=int(config["retrieval"].get("timeout_seconds", 30)),
+        timeout_seconds=optional_timeout_seconds(config["retrieval"].get("timeout_seconds")),
     )
     generator = AnthropicBatchAnswerGenerator.from_config(config)
 
