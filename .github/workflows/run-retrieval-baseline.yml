@@ -42,6 +42,7 @@ jobs:
           echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
           echo "limit=$LIMIT" >> "$GITHUB_OUTPUT"
           echo "route=$ROUTE" >> "$GITHUB_OUTPUT"
+          echo "Resolved config=$CONFIG route=$ROUTE limit=$LIMIT"
       - name: Prepare development topics
         if: ${{ steps.resolve.outputs.route == 'retrieval' }}
         run: python scripts/prepare_dev_topics.py

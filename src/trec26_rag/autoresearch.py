@@ -875,8 +875,14 @@ def latest_changed_experiment_config(
     ref: str = "HEAD",
 ) -> Path:
     candidates: list[Path] = []
-    try:
-        output = run_git(["show", "--name-only", "--format=", ref])
+    for command in (
+        ["diff-tree", "--no-commit-id", "--name-only", "-r", ref],
+        ["show", "--name-only", "--format=", ref],
+    ):
+        try:
+            output = run_git(command)
+        except subprocess.CalledProcessError:
+            continue
         candidates = [
             Path(line.strip())
             for line in output.splitlines()
@@ -884,8 +890,8 @@ def latest_changed_experiment_config(
             and Path(line.strip()).suffix in {".yaml", ".yml"}
             and Path(line.strip()).exists()
         ]
-    except subprocess.CalledProcessError:
-        candidates = []
+        if candidates:
+            break
     if not candidates:
         root = Path("configs/experiments")
         candidates = (
@@ -1122,6 +1128,8 @@ def run_autoresearch_loop(
         iteration["summary"] = summary
         iteration["memory_path"] = memory_path.as_posix()
         results.append(iteration)
+        if workflow_summary.get("conclusion") != "success":
+            break
     return results
 
 
