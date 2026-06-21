@@ -7,12 +7,15 @@ from pathlib import Path
 import yaml
 
 from trec26_rag.autoresearch import (
+    GitHubPullRequest,
     GitHubWorkflowRun,
     build_autoresearch_summary,
     changed_config_keys,
+    compare_url,
     find_secret_like_values,
     is_path_allowed,
     load_autoresearch_policy,
+    open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
     select_current_best_run,
@@ -204,6 +207,39 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual(summary["route"], "retrieval")
         self.assertEqual(summary["workflow"]["conclusion"], "success")
         self.assertEqual(summary["current_best"]["best_run"]["id"], "best")
+
+    def test_open_bootstrap_pr_uses_policy_repo_and_base(self) -> None:
+        class FakeGitHubClient:
+            def __init__(self) -> None:
+                self.payload = None
+
+            def create_pull_request(self, **kwargs):
+                self.payload = kwargs
+                return GitHubPullRequest(
+                    number=7,
+                    title=kwargs["title"],
+                    html_url="https://github.test/pr/7",
+                    state="open",
+                    draft=kwargs["draft"],
+                )
+
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        client = FakeGitHubClient()
+
+        pr = open_autoresearch_bootstrap_pr(policy, client=client)
+
+        self.assertEqual(pr.number, 7)
+        self.assertEqual(client.payload["head"], "codex/autoresearch-v1")
+        self.assertEqual(client.payload["base"], "main")
+        self.assertTrue(client.payload["draft"])
+
+    def test_compare_url_points_to_bootstrap_branch(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+
+        self.assertEqual(
+            compare_url(policy, "codex/autoresearch-v1"),
+            "https://github.com/yyd859/TREC26_RAG_GLHF/compare/main...codex/autoresearch-v1",
+        )
 
 
 if __name__ == "__main__":

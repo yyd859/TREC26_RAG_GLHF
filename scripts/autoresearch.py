@@ -8,11 +8,13 @@ from pathlib import Path
 from trec26_rag.autoresearch import (
     GitHubActionsClient,
     build_autoresearch_summary,
+    compare_url,
     dispatch_route,
     dumps_json,
     fetch_policy_wandb_runs,
     load_autoresearch_policy,
     log_autoresearch_summary,
+    open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
     select_current_best_run,
@@ -48,6 +50,12 @@ def parse_args() -> argparse.Namespace:
     dispatch.add_argument("--config", required=True)
     dispatch.add_argument("--ref")
     dispatch.add_argument("--limit")
+
+    open_pr = subparsers.add_parser("open-pr", help="Open the autoresearch bootstrap PR.")
+    open_pr.add_argument("--head", default="codex/autoresearch-v1")
+    open_pr.add_argument("--base")
+    open_pr.add_argument("--title", default="Add autoresearch orchestrator v1")
+    open_pr.add_argument("--ready", action="store_true", help="Create a non-draft PR.")
 
     monitor = subparsers.add_parser("monitor", help="Summarize recent GitHub Actions status.")
     monitor.add_argument("--route", required=True)
@@ -176,6 +184,32 @@ def main() -> int:
         )
         print(dumps_json(result))
         return 0
+
+    if args.command == "open-pr":
+        try:
+            pr = open_autoresearch_bootstrap_pr(
+                policy=policy,
+                head=args.head,
+                base=args.base,
+                title=args.title,
+                draft=not args.ready,
+            )
+            print(
+                dumps_json(
+                    {
+                        "number": pr.number,
+                        "title": pr.title,
+                        "url": pr.html_url,
+                        "state": pr.state,
+                        "draft": pr.draft,
+                    }
+                )
+            )
+            return 0
+        except RuntimeError as exc:
+            fallback = compare_url(policy, args.head, args.base)
+            print(dumps_json({"error": str(exc), "manual_compare_url": fallback}))
+            return 1
 
     if args.command == "monitor":
         decision = route_for(policy, args.route)

@@ -222,6 +222,7 @@ python scripts/autoresearch.py best-run
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
+python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
 ```
 
 After a generated config PR is reviewed and merged, trigger the matching
@@ -252,9 +253,11 @@ GitHub Actions also has **Autoresearch Orchestrator**, which can:
 
 Bootstrap note: a newly added workflow such as `autoresearch.yml` must be
 merged to the repository default branch before it reliably appears in the
-GitHub Actions UI for manual dispatch. If the GitHub connector or local CLI
-cannot create the first PR because of permissions, open a compare PR manually
-from the pushed feature branch, then use the workflow after it lands on `main`.
+GitHub Actions UI for manual dispatch. Use `scripts/autoresearch.py open-pr`
+when `GITHUB_TOKEN` is available. If the GitHub connector or local CLI cannot
+create the first PR because of permissions, the command prints a manual compare
+URL for the pushed feature branch; open that PR manually, then use the workflow
+after it lands on `main`.
 
 For workflow dispatch from inside another GitHub workflow, add
 `AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the

@@ -37,6 +37,7 @@ python scripts/autoresearch.py best-run
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
+python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
 ```
 
 After a config PR is reviewed and merged, dispatch the matching workflow with:
@@ -75,9 +76,10 @@ Autoresearch safety rules:
   dispatch another workflow.
 
 Bootstrap note: new workflow files usually need to land on the default branch
-before they appear in the GitHub Actions UI for manual dispatch. If automation
-cannot open the initial PR because of GitHub app permissions, open the compare
-PR manually from the pushed feature branch and continue the loop after merge.
+before they appear in the GitHub Actions UI for manual dispatch. If
+`GITHUB_TOKEN` is available, use `scripts/autoresearch.py open-pr`; otherwise
+use the printed compare URL or open the compare PR manually from the pushed
+feature branch and continue the loop after merge.
 
 ## Evaluation Layers
 

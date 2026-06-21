@@ -86,6 +86,15 @@ class GitHubWorkflowRun:
     head_sha: str | None
 
 
+@dataclass(frozen=True)
+class GitHubPullRequest:
+    number: int
+    title: str
+    html_url: str
+    state: str
+    draft: bool
+
+
 def load_autoresearch_policy(path: str | Path = "configs/autoresearch.yaml") -> AutoresearchPolicy:
     policy_path = Path(path)
     with policy_path.open("r", encoding="utf-8") as handle:
@@ -396,6 +405,42 @@ class GitHubActionsClient:
             for run in payload.get("workflow_runs", [])
         ]
 
+    def create_pull_request(
+        self,
+        head: str,
+        base: str,
+        title: str,
+        body: str,
+        draft: bool = True,
+    ) -> GitHubPullRequest:
+        url = f"https://api.github.com/repos/{self.repository}/pulls"
+        response = requests.post(
+            url,
+            headers=self.headers,
+            json={
+                "head": head,
+                "base": base,
+                "title": title,
+                "body": body,
+                "draft": draft,
+                "maintainer_can_modify": True,
+            },
+            timeout=30,
+        )
+        if response.status_code not in {200, 201}:
+            raise RuntimeError(
+                f"GitHub PR creation failed with HTTP {response.status_code}: "
+                f"{response.text[:300]}"
+            )
+        payload = response.json()
+        return GitHubPullRequest(
+            number=int(payload["number"]),
+            title=str(payload.get("title") or title),
+            html_url=str(payload["html_url"]),
+            state=str(payload.get("state") or "open"),
+            draft=bool(payload.get("draft", draft)),
+        )
+
 
 def dispatch_route(
     policy: AutoresearchPolicy,
@@ -427,6 +472,55 @@ def dispatch_route(
         "ref": ref or policy.github_base_branch,
         "inputs": workflow_inputs,
     }
+
+
+def build_autoresearch_pr_body() -> str:
+    return (
+        "## Summary\n\n"
+        "Adds the first review-gated autoresearch orchestration layer inspired by "
+        "karpathy/autoresearch, adapted to this repo's Level 2 config-only workflow.\n\n"
+        "- Adds `configs/autoresearch.yaml` with runner tradeoffs, route policy, "
+        "allowed paths, objective config, and PR review guardrails.\n"
+        "- Adds `scripts/autoresearch.py` plus `trec26_rag.autoresearch` for routes, "
+        "W&B best-run lookup, safe config proposal generation, workflow dispatch, "
+        "monitor summaries, and optional W&B autoresearch logging.\n"
+        "- Adds the `Autoresearch Orchestrator` GitHub workflow for "
+        "propose/dispatch/monitor operations.\n"
+        "- Documents operating instructions in README and AGENTS.\n"
+        "- Adds tests for routing, safety constraints, proposal generation, "
+        "objective selection, and summary construction.\n\n"
+        "## Verification\n\n"
+        "- `PYTHONPATH=src python -m unittest discover -s tests`\n"
+        "- `PYTHONPATH=src python scripts/autoresearch.py check --route retrieval "
+        "configs/experiments/`\n\n"
+        "## Bootstrap note\n\n"
+        "After this lands on `main`, the new `Autoresearch Orchestrator` workflow "
+        "can be manually dispatched from the GitHub Actions UI."
+    )
+
+
+def open_autoresearch_bootstrap_pr(
+    policy: AutoresearchPolicy,
+    head: str = "codex/autoresearch-v1",
+    base: str | None = None,
+    title: str = "Add autoresearch orchestrator v1",
+    body: str | None = None,
+    draft: bool = True,
+    token: str | None = None,
+    client: GitHubActionsClient | None = None,
+) -> GitHubPullRequest:
+    github = client or GitHubActionsClient(policy.github_repository, token=token)
+    return github.create_pull_request(
+        head=head,
+        base=base or policy.github_base_branch,
+        title=title,
+        body=body or build_autoresearch_pr_body(),
+        draft=draft,
+    )
+
+
+def compare_url(policy: AutoresearchPolicy, head: str, base: str | None = None) -> str:
+    return f"https://github.com/{policy.github_repository}/compare/{base or policy.github_base_branch}...{head}"
 
 
 def summarize_runs(runs: list[GitHubWorkflowRun]) -> dict[str, Any]:
