@@ -1067,5 +1067,21 @@ def run_autoresearch_loop(
     return results
 
 
+def json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return value.as_posix()
+    if hasattr(value, "items"):
+        try:
+            return dict(value)
+        except Exception:
+            pass
+    if hasattr(value, "tolist"):
+        try:
+            return value.tolist()
+        except Exception:
+            pass
+    return str(value)
+
+
 def dumps_json(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, indent=2, sort_keys=True)
+    return json.dumps(payload, indent=2, sort_keys=True, default=json_default)
