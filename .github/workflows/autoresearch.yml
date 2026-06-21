@@ -72,6 +72,7 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.command == 'propose' }}
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.AUTORESEARCH_GITHUB_TOKEN || github.token }}
           branch: codex/autoresearch-proposal
           delete-branch: true
           title: "Propose next ${{ inputs.route || 'retrieval' }} experiment"
