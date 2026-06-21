@@ -7,19 +7,26 @@ from pathlib import Path
 import yaml
 
 from trec26_rag.autoresearch import (
+    append_research_decision,
+    apply_runtime_limit,
     GitHubPullRequest,
     GitHubWorkflowRun,
     build_dispatch_payload,
     build_autoresearch_summary,
+    build_research_context,
     changed_config_keys,
     compare_url,
     experiment_branch_name,
     find_secret_like_values,
     is_path_allowed,
+    latest_changed_experiment_config,
     load_autoresearch_policy,
+    load_research_memory,
     open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
+    route_name_for_config,
+    save_research_memory,
     select_current_best_run,
     slugify_branch_component,
     summarize_best_run,
@@ -27,6 +34,7 @@ from trec26_rag.autoresearch import (
     validate_changed_paths,
     validate_config_delta,
     validate_proposal_file,
+    workflow_limit_for_config,
 )
 from trec26_rag.config import write_config
 from trec26_rag.experiment_optimizer import RunRecord
@@ -271,6 +279,100 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual(payload["ref"], "main")
         self.assertEqual(payload["inputs"]["config"], "configs/experiments/rag.yaml")
         self.assertEqual(payload["inputs"]["limit"], "2")
+
+    def test_route_name_for_config_uses_experiment_task(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        with tempfile.TemporaryDirectory(dir="configs/experiments") as output_dir:
+            rag_path = Path(output_dir) / "rag_route.yaml"
+            retrieval_path = Path(output_dir) / "retrieval_route.yaml"
+            write_config({"experiment": {"task": "rag"}, "rag": {"enabled": True}}, rag_path)
+            write_config({"experiment": {"task": "retrieval"}, "rag": {"enabled": False}}, retrieval_path)
+
+            self.assertEqual(route_name_for_config(policy, rag_path), "rag")
+            self.assertEqual(route_name_for_config(policy, retrieval_path), "retrieval")
+
+    def test_workflow_limit_prefers_runtime_limit_in_config(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        with tempfile.TemporaryDirectory(dir="configs/experiments") as output_dir:
+            config_path = Path(output_dir) / "limited.yaml"
+            write_config({"experiment": {"task": "retrieval"}}, config_path)
+            apply_runtime_limit(config_path, "2")
+
+            self.assertEqual(workflow_limit_for_config(policy, config_path), "2")
+            self.assertEqual(validate_config_delta("configs/baseline_retrieval.yaml", config_path, policy), [])
+
+    def test_latest_changed_experiment_config_falls_back_to_newest_file(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        with tempfile.TemporaryDirectory(dir="configs/experiments") as output_dir:
+            old_path = Path(output_dir) / "old.yaml"
+            new_path = Path(output_dir) / "new.yaml"
+            write_config({"experiment": {"task": "retrieval"}}, old_path)
+            write_config({"experiment": {"task": "rag"}, "rag": {"enabled": True}}, new_path)
+            old_path.touch()
+            new_path.touch()
+
+            latest = latest_changed_experiment_config(policy, ref="missing-ref")
+
+        self.assertEqual(latest.name, "new.yaml")
+
+    def test_research_memory_round_trips_decisions(self) -> None:
+        with tempfile.TemporaryDirectory() as output_dir:
+            memory_path = Path(output_dir) / "memory.json"
+            memory = load_research_memory(memory_path)
+            append_research_decision(
+                memory,
+                route_name="rag",
+                proposal_path="configs/experiments/rag.yaml",
+                branch="codex/autoresearch-rag",
+                workflow_summary={"conclusion": "success"},
+                wandb_summary={"best_run": {"id": "run-1"}},
+            )
+            save_research_memory(memory_path, memory)
+            reloaded = load_research_memory(memory_path)
+
+        self.assertEqual(reloaded["decisions"][0]["route"], "rag")
+        self.assertEqual(reloaded["decisions"][0]["branch"], "codex/autoresearch-rag")
+
+    def test_build_research_context_combines_configs_runs_and_memory(self) -> None:
+        policy = load_autoresearch_policy("configs/autoresearch.yaml")
+        runs = [
+            RunRecord(
+                id="run-1",
+                name="run-1",
+                url="https://wandb.test/run-1",
+                config={
+                    "experiment": {"task": "retrieval", "name": "run-1"},
+                    "retrieval": {"query_template": "{title}", "hits": 100},
+                    "rag": {"evidence_top_k": 5, "max_output_tokens": 800},
+                },
+                summary={"candidate_count_mean": 10, "validation_error_count": 0},
+                tags=["retrieval"],
+            )
+        ]
+        with tempfile.TemporaryDirectory(dir="configs/experiments") as config_dir:
+            config_path = Path(config_dir) / "context.yaml"
+            memory_path = Path(config_dir) / "memory.json"
+            write_config(
+                {
+                    "experiment": {"task": "rag", "name": "context"},
+                    "retrieval": {"query_template": "{title} {narrative}", "hits": 20},
+                    "rag": {"enabled": True, "evidence_top_k": 5},
+                },
+                config_path,
+            )
+            save_research_memory(memory_path, {"version": 1, "decisions": [{"route": "rag"}]})
+
+            context = build_research_context(
+                policy,
+                runs=runs,
+                config_dir=config_dir,
+                memory_path=memory_path,
+            )
+
+        self.assertEqual(context["wandb_runs"][0]["id"], "run-1")
+        self.assertEqual(context["historical_configs"][0]["path"], config_path.as_posix())
+        self.assertEqual(context["research_memory"]["decisions"][0]["route"], "rag")
+        self.assertTrue(context["tried_config_signatures"])
 
 
 if __name__ == "__main__":

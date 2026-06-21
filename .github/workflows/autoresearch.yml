@@ -70,9 +70,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "${{ inputs.limit }}" ]; then
-            python scripts/autoresearch.py iterate --route "${{ inputs.route || 'retrieval' }}" --ref "${{ inputs.ref || 'main' }}" --limit "${{ inputs.limit }}"
+            python scripts/autoresearch.py iterate --route "${{ inputs.route || 'retrieval' }}" --ref "${{ inputs.ref || 'main' }}" --limit "${{ inputs.limit }}" --dispatch
           else
-            python scripts/autoresearch.py iterate --route "${{ inputs.route || 'retrieval' }}" --ref "${{ inputs.ref || 'main' }}"
+            python scripts/autoresearch.py iterate --route "${{ inputs.route || 'retrieval' }}" --ref "${{ inputs.ref || 'main' }}" --dispatch
           fi
       - name: Generate config-only proposal
         if: ${{ inputs.command == 'propose' }}

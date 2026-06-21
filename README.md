@@ -7,8 +7,8 @@ This repo starts with a Level 2 experiment workflow:
 1. Humans or Codex open a branch/PR for code changes.
 2. The retrieval baseline runs against the official Pyserini REST API.
 3. Weights & Biases records configs, metrics, validation reports, and runfiles.
-4. The autoresearch loop reads W&B history, creates a config-only experiment branch, and dispatches the matching workflow on that branch.
-5. Humans promote useful experiment configs through PRs only when a result should become part of a shared baseline.
+4. The local autoresearch agent reads historical configs plus W&B evals, creates a config-only experiment branch, and lets the branch push trigger the matching workflow.
+5. W&B is the experiment ledger: workflow outputs, summaries, research memory, and per-run artifacts should live there. PRs are reserved for code changes or promoting a shared baseline.
 
 The important guardrail is that optimization starts by changing configs under
 `configs/experiments/`, not arbitrary pipeline code.
@@ -183,25 +183,22 @@ python scripts/propose_next_experiment.py \
 The script reads recent W&B runs, chooses the best valid run, and writes a new
 config file with a single main change. For autonomous iterations, prefer
 `scripts/autoresearch.py iterate`, which commits the config on a new experiment
-branch and dispatches the matching workflow immediately.
+branch and lets the branch push trigger the matching workflow.
 
 ## Autoresearch V1
 
 Autoresearch is the branch-native experiment loop inspired by
-`karpathy/autoresearch`, adapted to this repo's Level 2 constraint: the agent
-does not edit core code during routine optimization. It reads W&B/GitHub state,
-chooses the next experiment, writes a config under `configs/experiments/`, and
-runs that config on a dedicated experiment branch. PRs are reserved for
-promoting useful results or changing core code.
+`karpathy/autoresearch`, adapted to this repo's Level 2 constraint: the local
+agent does not edit core code during routine optimization. It reads all
+historical experiment configs, recent W&B evals, current best-run state, and
+research memory before choosing the next config-only experiment.
 
-V1 selects **GitHub Actions scheduled/manual workflows** as the runner
-environment. This is the lowest-friction option because the repo already uses
-Actions secrets, workflow dispatch, branch-scoped runs, and W&B logging.
-Self-hosted GPU runners, local long-running agents, Modal/RunPod/Vast, and
-Codex automations are
-documented as candidate backends in `configs/autoresearch.yaml`, but they are
-not the default until the workflow needs long-running orchestration or GPU
-compute.
+V1 treats the local Codex/Claude agent as the research brain, GitHub Actions as
+the CPU/GPU runner layer, and W&B as the durable experiment ledger. The agent
+pushes a unique `codex/autoresearch-*` branch; that push triggers the matching
+retrieval or RAG workflow, and the workflow logs outputs back to W&B. PRs are
+not part of the routine loop; use them only for core code changes or for
+promoting a shared baseline.
 
 The policy file is:
 
@@ -216,24 +213,30 @@ It defines:
 - objective metric and direction
 - GitHub workflow mapping for each experiment route
 - branching mode: direct experiment branches for routine iterations
+- branch push triggers for `codex/autoresearch-*`
+- research memory at `outputs/autoresearch_memory.json`, mirrored to W&B
 
 Useful local commands:
 
 ```bash
 python scripts/autoresearch.py routes
 python scripts/autoresearch.py best-run
+python scripts/autoresearch.py research-context --max-runs 50
 python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
+python scripts/autoresearch.py monitor --route retrieval --branch <codex/autoresearch-branch> --include-wandb --log-wandb --update-memory
+python scripts/autoresearch.py loop --route retrieval --max-rounds 3 --poll-seconds 120
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
 python scripts/autoresearch.py dry-run --route retrieval --ref main
 python scripts/autoresearch.py dry-run --route rag --ref main
-python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
+python scripts/autoresearch.py latest-config
+python scripts/autoresearch.py route-config --config configs/experiments/<proposal>.yaml
 ```
 
 `dry-run` is a no-network local simulation. It creates a temporary proposal
 under `configs/experiments/`, validates policy constraints, builds the workflow
-dispatch payload, and emits the same monitor summary shape used by real runs.
+payload, and emits the same monitor summary shape used by real runs.
 Use it before relying on GitHub/W&B credentials.
 
 For a full branch-native iteration, run:
@@ -243,16 +246,28 @@ python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 ```
 
 This creates a new `codex/autoresearch-*` branch, commits the generated config,
-pushes the branch, and dispatches the matching workflow on that branch.
+and pushes the branch. The retrieval and RAG workflows both listen to these
+branch pushes, resolve the latest experiment config from the commit, infer the
+route from `experiment.task`, and skip themselves if the config belongs to the
+other route. When `iterate --limit` is used, the generated config includes
+`runtime.limit` so push-triggered workflows can honor the same smoke/full-run
+setting without manual workflow inputs.
 
 Then monitor the route or a specific branch:
 
 ```bash
-python scripts/autoresearch.py monitor --route retrieval --branch main
+python scripts/autoresearch.py monitor --route retrieval --branch <codex/autoresearch-branch> --include-wandb --log-wandb --update-memory
 ```
 
-`iterate`, `dispatch`, and `monitor` require `GITHUB_TOKEN`. W&B inspection
-requires `WANDB_API_KEY`, `WANDB_PROJECT`, and optionally `WANDB_ENTITY`.
+`research-context` is the main handoff point for the local agent: it prints a
+single JSON object containing historical configs, W&B summaries, best-run
+selection, tried config signatures, and research memory. The bounded `loop`
+command wires together propose, branch, push, monitor, W&B summary logging, and
+memory update for unattended overnight runs.
+
+Local `iterate` uses your normal Git remote/CLI auth. `monitor`, `dispatch`,
+and the GitHub API-backed pieces require `GITHUB_TOKEN`. W&B inspection and
+logging require `WANDB_API_KEY`, `WANDB_PROJECT`, and optionally `WANDB_ENTITY`.
 
 GitHub Actions also has **Autoresearch Orchestrator**, which can:
 
@@ -262,19 +277,16 @@ GitHub Actions also has **Autoresearch Orchestrator**, which can:
 - dispatch a config to the retrieval/RAG workflow on the selected branch
 - monitor the latest workflow status and log autoresearch summaries to W&B
 
-Keep GitHub lightweight: Actions should provide trigger/status/log plumbing,
-while experiment comparisons, best-run state, and autoresearch summaries should
-live in W&B whenever credentials are available. The monitor command prints JSON
-to the Actions log for debugging, but it does not write an extra GitHub step
-summary.
+Keep GitHub lightweight: Actions should provide trigger/status/log plumbing and
+compute. Experiment comparisons, best-run state, autoresearch summaries, and
+research memory should live in W&B whenever credentials are available. The
+monitor command prints JSON to logs for debugging, but it does not write an
+extra GitHub step summary.
 
-Bootstrap note: a newly added workflow such as `autoresearch.yml` must be
-merged to the repository default branch before it reliably appears in the
-GitHub Actions UI for manual dispatch. Use `scripts/autoresearch.py open-pr`
-when `GITHUB_TOKEN` is available. If the GitHub connector or local CLI cannot
-create the first PR because of permissions, the command prints a manual compare
-URL for the pushed feature branch; open that PR manually, then use the workflow
-after it lands on `main`.
+Bootstrap note: a newly added workflow must be merged to the repository default
+branch before it reliably appears in the GitHub Actions UI or can trigger from
+push events. That rule is for workflow/code changes, not routine experiment
+branches.
 
 For workflow dispatch or branch creation from inside another GitHub workflow, add
 `AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the

@@ -27,28 +27,43 @@ PYTHONPATH=src python -m unittest discover -s tests
 
 ## Autoresearch Loop
 
-Autoresearch v1 uses GitHub Actions as the runner environment and keeps the
-agent at Level 2: it may propose config-only changes but must not directly
-change core code during routine optimization. The policy lives in
-`configs/autoresearch.yaml`.
+Autoresearch v1 keeps the agent local and uses GitHub Actions as the compute
+runner. The agent stays at Level 2 during routine optimization: it may propose
+config-only changes under `configs/experiments/`, but it must not directly
+change core code. The policy lives in `configs/autoresearch.yaml`.
+
+The intended loop is:
+
+1. Agent reads `research-context`: historical experiment configs, W&B evals,
+   current best run, tried signatures, and research memory.
+2. Agent proposes the next config-only experiment.
+3. Agent creates a unique `codex/autoresearch-*` branch and pushes the config.
+4. The branch push triggers the matching retrieval/RAG workflow.
+5. The workflow logs metrics and artifacts to W&B.
+6. Agent monitors the branch workflow, summarizes to W&B, updates
+   `outputs/autoresearch_memory.json`, and starts the next round.
 
 Use the router command for local orchestration:
 
 ```bash
 python scripts/autoresearch.py routes
 python scripts/autoresearch.py best-run
+python scripts/autoresearch.py research-context --max-runs 50
 python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
+python scripts/autoresearch.py monitor --route retrieval --branch <codex/autoresearch-branch> --include-wandb --log-wandb --update-memory
+python scripts/autoresearch.py loop --route retrieval --max-rounds 3 --poll-seconds 120
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
 python scripts/autoresearch.py dry-run --route retrieval --ref main
 python scripts/autoresearch.py dry-run --route rag --ref main
-python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
+python scripts/autoresearch.py latest-config
+python scripts/autoresearch.py route-config --config configs/experiments/<proposal>.yaml
 ```
 
 Use `dry-run` before touching GitHub/W&B. It performs a local no-network
 simulation that creates a temporary proposal under `configs/experiments/`,
-validates safety constraints, builds the workflow dispatch payload, and emits a
+validates safety constraints, builds the workflow payload, and emits a
 monitor-style summary.
 
 Prefer W&B as the durable home for experiment results and autoresearch
@@ -56,51 +71,56 @@ summaries. GitHub should stay focused on PR review, workflow status, and
 minimal logs; do not add extra GitHub step summaries unless a human explicitly
 asks for them.
 
-For routine autoresearch, create a new experiment branch and dispatch the
-matching workflow directly:
+For routine local autoresearch, create a new experiment branch and let the push
+trigger the matching workflow:
 
 ```bash
 python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 ```
 
 This reads W&B history, proposes a config under `configs/experiments/`, commits
-it to a new `codex/autoresearch-*` branch, pushes that branch, and dispatches
-the route workflow on that branch.
+it to a new `codex/autoresearch-*` branch, and pushes that branch. The
+retrieval and RAG workflows both listen to autoresearch branch pushes, resolve
+the latest config, infer its route, and skip themselves if the config belongs to
+the other route. When `iterate --limit` is used, the limit is written to
+`runtime.limit` inside the generated config so push-triggered workflows can
+honor the same smoke/full-run setting.
 
 Then summarize the latest GitHub Actions status:
 
 ```bash
-python scripts/autoresearch.py monitor --route retrieval --branch main
+python scripts/autoresearch.py monitor --route retrieval --branch <codex/autoresearch-branch> --include-wandb --log-wandb --update-memory
 ```
 
 The supported routes are:
 
-- `retrieval`: dispatches `run-retrieval-baseline.yml`
-- `rag`: dispatches `run-rag-baseline.yml`
+- `retrieval`: runs `run-retrieval-baseline.yml`
+- `rag`: runs `run-rag-baseline.yml`
 - `evaluation-only`: reruns the retrieval workflow for evaluation-focused configs
 - `proposer-only`: creates a config proposal without triggering an experiment
 
 The default runner selection is documented in `configs/autoresearch.yaml`:
-GitHub Actions scheduled/manual workflow is selected for v1; self-hosted GPU
-runners, local long-running agents, Modal/RunPod/Vast, and Codex automations
-remain candidate backends.
+the local agent is the orchestrator brain, GitHub Actions is the default CPU
+runner, and self-hosted GPU runners, Modal/RunPod/Vast, and Codex automations
+remain candidate compute/orchestration backends.
 
 Autoresearch safety rules:
 
 - Generated files must stay under `configs/experiments/`.
 - Do not commit API keys, tokens, passwords, or credentials in YAML.
+- `runtime.limit` is allowed only as workflow runtime metadata for branch-push
+  experiments.
 - Routine experiment iterations do not require PRs. Use PRs to promote useful
   configs to shared branches or to change core code.
-- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot push
-  experiment branches or dispatch another workflow. The Actions workflow falls
-  back to the default token when this secret is not configured.
+- Local agent pushes should use a normal GitHub-authenticated remote/CLI so
+  branch pushes trigger workflows. If running the GitHub Orchestrator workflow
+  itself, use `AUTORESEARCH_GITHUB_TOKEN` when the default `GITHUB_TOKEN` cannot
+  push branches or dispatch another workflow.
 
 Bootstrap note: new workflow files usually need to land on the default branch
-before they appear in the GitHub Actions UI for manual dispatch. If
-`GITHUB_TOKEN` is available, use `scripts/autoresearch.py open-pr`; otherwise
-use the printed compare URL or open the compare PR manually from the pushed
-feature branch and continue the loop after merge. This bootstrap rule is for
-workflow/code changes, not for routine experiment branches.
+before they appear in the GitHub Actions UI or can trigger reliably. This
+bootstrap rule is for workflow/code changes, not for routine experiment
+branches.
 
 ## Evaluation Layers
 

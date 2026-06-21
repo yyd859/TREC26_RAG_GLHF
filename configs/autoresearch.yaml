@@ -41,6 +41,8 @@ approved_config_keys:
   - rag.evidence_top_k
   - rag.prompt_template
   - rag.max_output_tokens
+  - runtime
+  - runtime.limit
   - wandb.tags
 
 routes:
@@ -81,7 +83,23 @@ branching:
   mode: direct_branch_iteration
   experiment_branch_prefix: codex/autoresearch-
   require_pr_for_iteration: false
-  promote_via_pr: true
+  promote_via_pr: false
+
+branch_triggers:
+  enabled: true
+  branch_glob: codex/autoresearch-*
+  path_glob: configs/experiments/**
+
+loop:
+  max_rounds: 20
+  poll_seconds: 120
+  max_parallel_runs: 1
+  stop_when_no_pending: false
+
+research_memory:
+  path: outputs/autoresearch_memory.json
+  wandb_artifact: autoresearch-memory
+  update_after_monitor: true
 
 github:
   repository: yyd859/TREC26_RAG_GLHF
