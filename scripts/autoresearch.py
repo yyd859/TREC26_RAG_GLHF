@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import tempfile
 from pathlib import Path
 
@@ -75,41 +74,6 @@ def parse_args() -> argparse.Namespace:
     # Touch subparser objects so linters do not mistake them as unused in simple scripts.
     _ = (routes,)
     return parser.parse_args()
-
-
-def write_github_step_summary(summary: dict[str, object]) -> None:
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if not summary_path:
-        return
-    workflow = summary.get("workflow", {})
-    current_best = summary.get("current_best", {})
-    best_run = current_best.get("best_run") if isinstance(current_best, dict) else None
-    lines = [
-        "## Autoresearch Monitor",
-        "",
-        f"- Route: `{summary.get('route', 'unknown')}`",
-        f"- Status: `{workflow.get('status', 'unknown') if isinstance(workflow, dict) else 'unknown'}`",
-        f"- Conclusion: `{workflow.get('conclusion', '') if isinstance(workflow, dict) else ''}`",
-        f"- Run ID: `{workflow.get('run_id', '') if isinstance(workflow, dict) else ''}`",
-        f"- URL: {workflow.get('url', '') if isinstance(workflow, dict) else ''}",
-        "",
-        str(workflow.get("summary", "") if isinstance(workflow, dict) else ""),
-        "",
-    ]
-    if isinstance(best_run, dict):
-        metric = current_best.get("metric") if isinstance(current_best, dict) else ""
-        lines.extend(
-            [
-                "### Current Best W&B Run",
-                "",
-                f"- Metric: `{metric}`",
-                f"- Value: `{best_run.get('value', '')}`",
-                f"- Run: {best_run.get('url') or best_run.get('id')}",
-                "",
-            ]
-        )
-    with open(summary_path, "a", encoding="utf-8") as handle:
-        handle.write("\n".join(lines))
 
 
 def proposal_files(paths: list[str]) -> list[Path]:
@@ -290,7 +254,6 @@ def main() -> int:
             run_url = log_autoresearch_summary(policy, summary)
             if run_url:
                 summary["autoresearch_wandb_run_url"] = run_url
-        write_github_step_summary(summary)
         print(dumps_json(summary))
         return 0
 

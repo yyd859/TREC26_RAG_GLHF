@@ -256,7 +256,13 @@ GitHub Actions also has **Autoresearch Orchestrator**, which can:
 - propose a config-only PR manually or on the weekly schedule
 - show the current W&B best run
 - dispatch a reviewed config to the retrieval/RAG workflow
-- monitor the latest workflow status
+- monitor the latest workflow status and log autoresearch summaries to W&B
+
+Keep GitHub lightweight: Actions should provide trigger/status/log plumbing,
+while experiment comparisons, best-run state, and autoresearch summaries should
+live in W&B whenever credentials are available. The monitor command prints JSON
+to the Actions log for debugging, but it does not write an extra GitHub step
+summary.
 
 Bootstrap note: a newly added workflow such as `autoresearch.yml` must be
 merged to the repository default branch before it reliably appears in the

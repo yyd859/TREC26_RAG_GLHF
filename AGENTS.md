@@ -47,6 +47,11 @@ simulation that creates a temporary proposal under `configs/experiments/`,
 validates safety constraints, builds the workflow dispatch payload, and emits a
 monitor-style summary.
 
+Prefer W&B as the durable home for experiment results and autoresearch
+summaries. GitHub should stay focused on PR review, workflow status, and
+minimal logs; do not add extra GitHub step summaries unless a human explicitly
+asks for them.
+
 After a config PR is reviewed and merged, dispatch the matching workflow with:
 
 ```bash
