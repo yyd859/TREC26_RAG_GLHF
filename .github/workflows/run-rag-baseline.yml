@@ -11,6 +11,11 @@ on:
         description: "Optional topic limit for smoke runs"
         required: false
         default: ""
+  push:
+    branches:
+      - "codex/autoresearch-*"
+    paths:
+      - "configs/experiments/**"
 
 jobs:
   rag-baseline:
@@ -23,9 +28,27 @@ jobs:
           python-version: "3.11"
       - name: Install package
         run: python -m pip install -e .
+      - name: Resolve experiment config
+        id: resolve
+        run: |
+          CONFIG="${{ github.event.inputs.config || '' }}"
+          LIMIT="${{ github.event.inputs.limit || '' }}"
+          if [ -z "$CONFIG" ]; then
+            CONFIG="$(python scripts/autoresearch.py latest-config)"
+          fi
+          ROUTE="$(python scripts/autoresearch.py route-config --config "$CONFIG" --field route)"
+          if [ -z "$LIMIT" ]; then
+            LIMIT="$(python scripts/autoresearch.py route-config --config "$CONFIG" --field default_limit)"
+          fi
+          echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          echo "limit=$LIMIT" >> "$GITHUB_OUTPUT"
+          echo "route=$ROUTE" >> "$GITHUB_OUTPUT"
+          echo "Resolved config=$CONFIG route=$ROUTE limit=$LIMIT"
       - name: Prepare development topics
+        if: ${{ steps.resolve.outputs.route == 'rag' }}
         run: python scripts/prepare_dev_topics.py
       - name: Run RAG baseline
+        if: ${{ steps.resolve.outputs.route == 'rag' }}
         env:
           PYSERINI_API_TOKEN: ${{ secrets.PYSERINI_API_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -33,10 +56,10 @@ jobs:
           WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
           WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
         run: |
-          if [ -n "${{ inputs.limit }}" ]; then
-            python scripts/run_rag_baseline.py --config "${{ inputs.config }}" --limit "${{ inputs.limit }}" --log-wandb
+          if [ -n "${{ steps.resolve.outputs.limit }}" ]; then
+            python scripts/run_rag_baseline.py --config "${{ steps.resolve.outputs.config }}" --limit "${{ steps.resolve.outputs.limit }}" --log-wandb
           else
-            python scripts/run_rag_baseline.py --config "${{ inputs.config }}" --log-wandb
+            python scripts/run_rag_baseline.py --config "${{ steps.resolve.outputs.config }}" --log-wandb
           fi
       - name: Upload local outputs
         uses: actions/upload-artifact@v4

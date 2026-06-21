@@ -26,6 +26,58 @@ class ExperimentOptimizerTest(unittest.TestCase):
         self.assertEqual(config["retrieval"]["hits"], 100)
         self.assertIn("proposed", config["wandb"]["tags"])
 
+    def test_propose_next_config_preserves_new_base_defaults_with_old_runs(self) -> None:
+        base_config = {
+            **DEFAULT_CONFIG,
+            "retrieval": {
+                **DEFAULT_CONFIG["retrieval"],
+                "retry_backoff_seconds": 1.0,
+                "max_retries": 5,
+            },
+        }
+        old_run = RunRecord(
+            "old",
+            "old",
+            None,
+            {
+                "experiment": {"name": "old", "run_id": "old"},
+                "retrieval": {"query_template": "{title}", "hits": 100},
+                "wandb": {"tags": ["retrieval"]},
+            },
+            {"candidate_count_mean": 100, "validation_error_count": 0},
+            [],
+        )
+
+        config = propose_next_config(base_config, [old_run])
+
+        self.assertEqual(config["retrieval"]["retry_backoff_seconds"], 1.0)
+        self.assertEqual(config["retrieval"]["max_retries"], 5)
+
+    def test_propose_next_config_advances_fallback_depths(self) -> None:
+        runs = []
+        for query_template, hits in [
+            ("{title} {narrative}", 100),
+            ("{title} {title} {narrative}", 100),
+            ("{title}", 200),
+            ("{title} {title} {narrative}", 200),
+            ("{title} {narrative}", 300),
+        ]:
+            runs.append(
+                RunRecord(
+                    f"{query_template}-{hits}",
+                    "run",
+                    None,
+                    {"retrieval": {"query_template": query_template, "hits": hits}},
+                    {"validation_error_count": 0},
+                    [],
+                )
+            )
+
+        config = propose_next_config(DEFAULT_CONFIG, runs)
+
+        self.assertEqual(config["experiment"]["run_id"], "glhf-title-narrative-top400")
+        self.assertEqual(config["retrieval"]["hits"], 400)
+
 
 if __name__ == "__main__":
     unittest.main()

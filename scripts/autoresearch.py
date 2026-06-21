@@ -7,24 +7,33 @@ from pathlib import Path
 
 from trec26_rag.autoresearch import (
     GitHubWorkflowRun,
+    append_research_decision,
     build_dispatch_payload,
     GitHubActionsClient,
     build_autoresearch_summary,
+    build_research_context,
     compare_url,
     dispatch_route,
     dumps_json,
     fetch_policy_wandb_runs,
+    latest_changed_experiment_config,
     load_autoresearch_policy,
+    load_research_memory,
     log_autoresearch_summary,
+    log_research_memory,
     open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
+    route_name_for_config,
+    run_autoresearch_loop,
     run_branch_iteration,
+    save_research_memory,
     select_current_best_run,
     summarize_runs,
     validate_changed_paths,
     validate_config_delta,
     validate_proposal_file,
+    workflow_limit_for_config,
 )
 
 
@@ -62,6 +71,44 @@ def parse_args() -> argparse.Namespace:
     iterate.add_argument("--ref")
     iterate.add_argument("--limit")
     iterate.add_argument("--output-dir", default="configs/experiments")
+    iterate.add_argument(
+        "--dispatch",
+        action="store_true",
+        help="Dispatch explicitly instead of relying on branch push triggers.",
+    )
+
+    latest_config = subparsers.add_parser(
+        "latest-config",
+        help="Print the latest changed experiment config, optionally filtered by route.",
+    )
+    latest_config.add_argument("--route")
+    latest_config.add_argument("--ref", default="HEAD")
+
+    route_config = subparsers.add_parser("route-config", help="Infer the autoresearch route for a config.")
+    route_config.add_argument("--config", required=True)
+    route_config.add_argument(
+        "--field",
+        choices=["route", "workflow", "task", "default_limit"],
+        default="route",
+    )
+
+    research_context = subparsers.add_parser(
+        "research-context",
+        help="Print the holistic context the local agent should read before proposing.",
+    )
+    research_context.add_argument("--max-runs", type=int)
+    research_context.add_argument("--config-dir", default="configs/experiments")
+    research_context.add_argument("--memory-path")
+
+    loop = subparsers.add_parser(
+        "loop",
+        help="Run a bounded local autoresearch loop: propose, branch, push, monitor, log, remember.",
+    )
+    loop.add_argument("--route", default="retrieval")
+    loop.add_argument("--ref")
+    loop.add_argument("--max-rounds", type=int)
+    loop.add_argument("--poll-seconds", type=int)
+    loop.add_argument("--limit")
 
     open_pr = subparsers.add_parser("open-pr", help="Open the autoresearch bootstrap PR.")
     open_pr.add_argument("--head", default="codex/autoresearch-v1")
@@ -80,6 +127,7 @@ def parse_args() -> argparse.Namespace:
     monitor.add_argument("--per-page", type=int, default=5)
     monitor.add_argument("--include-wandb", action="store_true")
     monitor.add_argument("--log-wandb", action="store_true")
+    monitor.add_argument("--update-memory", action="store_true")
 
     # Touch subparser objects so linters do not mistake them as unused in simple scripts.
     _ = (routes,)
@@ -174,8 +222,54 @@ def main() -> int:
             ref=args.ref,
             limit=args.limit,
             output_dir=args.output_dir,
+            dispatch=args.dispatch,
         )
         print(dumps_json(result))
+        return 0
+
+    if args.command == "latest-config":
+        path = latest_changed_experiment_config(policy, route_name=args.route, ref=args.ref)
+        print(path.as_posix())
+        return 0
+
+    if args.command == "route-config":
+        route_name = route_name_for_config(policy, args.config)
+        decision = route_for(policy, route_name)
+        values = {
+            "route": route_name,
+            "workflow": decision.workflow,
+            "task": decision.task,
+            "default_limit": workflow_limit_for_config(policy, args.config),
+        }
+        print(values[args.field])
+        return 0
+
+    if args.command == "research-context":
+        if args.max_runs is not None:
+            policy.raw.setdefault("wandb", {})["max_runs"] = args.max_runs
+        context = build_research_context(
+            policy=policy,
+            config_dir=args.config_dir,
+            memory_path=args.memory_path,
+        )
+        print(dumps_json(context))
+        return 0
+
+    if args.command == "loop":
+        loop_config = policy.raw.get("loop", {})
+        if not isinstance(loop_config, dict):
+            loop_config = {}
+        max_rounds = args.max_rounds or int(loop_config.get("max_rounds") or 1)
+        poll_seconds = args.poll_seconds or int(loop_config.get("poll_seconds") or 120)
+        result = run_autoresearch_loop(
+            policy=policy,
+            route_name=args.route,
+            max_rounds=max_rounds,
+            poll_seconds=poll_seconds,
+            limit=args.limit,
+            ref=args.ref,
+        )
+        print(dumps_json({"rounds": result}))
         return 0
 
     if args.command == "open-pr":
@@ -275,6 +369,21 @@ def main() -> int:
             run_url = log_autoresearch_summary(policy, summary)
             if run_url:
                 summary["autoresearch_wandb_run_url"] = run_url
+        if args.update_memory:
+            memory = load_research_memory(policy.research_memory_path)
+            append_research_decision(
+                memory,
+                route_name=args.route,
+                branch=args.branch,
+                workflow_summary=workflow_summary,
+                wandb_summary=summary.get("current_best", {}),
+            )
+            memory_path = save_research_memory(policy.research_memory_path, memory)
+            summary["research_memory_path"] = memory_path.as_posix()
+            if args.log_wandb:
+                memory_run_url = log_research_memory(policy, memory_path)
+                if memory_run_url:
+                    summary["research_memory_wandb_run_url"] = memory_run_url
         print(dumps_json(summary))
         return 0
 

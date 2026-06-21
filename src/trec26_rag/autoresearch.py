@@ -4,14 +4,16 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 import requests
 import yaml
 
-from .config import load_config
+from .config import load_config, write_config
 from .experiment_optimizer import RunRecord, fetch_wandb_runs, propose_next_config, select_best_run
 from .pyserini_client import load_env_file
 
@@ -74,6 +76,18 @@ class AutoresearchPolicy:
     def github_base_branch(self) -> str:
         github = self.raw.get("github", {})
         return str(github.get("base_branch") or "main") if isinstance(github, dict) else "main"
+
+    @property
+    def branch_push_triggers_enabled(self) -> bool:
+        triggers = self.raw.get("branch_triggers", {})
+        return bool(isinstance(triggers, dict) and triggers.get("enabled", False))
+
+    @property
+    def research_memory_path(self) -> Path:
+        memory = self.raw.get("research_memory", {})
+        if isinstance(memory, dict) and memory.get("path"):
+            return Path(str(memory["path"]))
+        return Path("outputs/autoresearch_memory.json")
 
 
 @dataclass(frozen=True)
@@ -203,6 +217,60 @@ def changed_config_keys(base: Any, proposal: Any, prefix: str = "") -> set[str]:
     return set()
 
 
+_MISSING = object()
+
+
+def get_nested_config_value(config: dict[str, Any], path: str) -> Any:
+    current: Any = config
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return _MISSING
+        current = current[part]
+    return current
+
+
+def set_nested_config_value(config: dict[str, Any], path: str, value: Any) -> None:
+    current: dict[str, Any] = config
+    parts = path.split(".")
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    current[parts[-1]] = value
+
+
+def delete_nested_config_value(config: dict[str, Any], path: str) -> None:
+    current: Any = config
+    parts = path.split(".")
+    for part in parts[:-1]:
+        if not isinstance(current, dict) or part not in current:
+            return
+        current = current[part]
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
+def restore_unapproved_config_changes(
+    base_config: dict[str, Any],
+    proposal_config: dict[str, Any],
+    policy: AutoresearchPolicy,
+) -> dict[str, Any]:
+    approved = policy.approved_config_keys
+    if not approved:
+        return proposal_config
+    for key in sorted(changed_config_keys(base_config, proposal_config)):
+        if key in approved:
+            continue
+        base_value = get_nested_config_value(base_config, key)
+        if base_value is _MISSING:
+            delete_nested_config_value(proposal_config, key)
+        else:
+            set_nested_config_value(proposal_config, key, base_value)
+    return proposal_config
+
+
 def validate_config_delta(
     base_config_path: str | Path,
     proposal_path: str | Path,
@@ -327,6 +395,221 @@ def fetch_policy_wandb_runs(policy: AutoresearchPolicy) -> list[RunRecord]:
     return fetch_wandb_runs(project=project, entity=entity, max_runs=max_runs)
 
 
+def compact_run_record(run: RunRecord) -> dict[str, Any]:
+    config = run.config if isinstance(run.config, dict) else {}
+    return {
+        "id": run.id,
+        "name": run.name,
+        "url": run.url,
+        "tags": run.tags,
+        "experiment": config.get("experiment", {}),
+        "retrieval": config.get("retrieval", {}),
+        "rag": config.get("rag", {}),
+        "evaluation": config.get("evaluation", {}),
+        "wandb": {"tags": (config.get("wandb", {}) or {}).get("tags", [])},
+        "summary": {
+            key: value
+            for key, value in run.summary.items()
+            if key
+            in {
+                "ndcg@10",
+                "recall@100",
+                "map",
+                "mrr",
+                "candidate_count_mean",
+                "candidate_count_min",
+                "candidate_count_max",
+                "duplicate_doc_rate",
+                "empty_topic_count",
+                "latency_mean_seconds",
+                "validation_error_count",
+                "rag_validation_error_count",
+                "rag_reference_coverage",
+                "rag_answer_count",
+                "rag_citation_error_count",
+            }
+        },
+    }
+
+
+def collect_experiment_configs(config_dir: str | Path = "configs/experiments") -> list[dict[str, Any]]:
+    root = Path(config_dir)
+    if not root.exists():
+        return []
+    configs: list[dict[str, Any]] = []
+    for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
+        try:
+            config = load_config(path)
+        except Exception as exc:  # pragma: no cover - defensive context building
+            configs.append({"path": path.as_posix(), "error": str(exc)})
+            continue
+        configs.append(
+            {
+                "path": path.as_posix(),
+                "experiment": config.get("experiment", {}),
+                "retrieval": config.get("retrieval", {}),
+                "rag": config.get("rag", {}),
+                "evaluation": config.get("evaluation", {}),
+                "wandb": {"tags": (config.get("wandb", {}) or {}).get("tags", [])},
+            }
+        )
+    return configs
+
+
+def compact_config_record(path: str | Path | None, config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "path": None if path is None else Path(path).as_posix(),
+        "experiment": config.get("experiment", {}),
+        "retrieval": config.get("retrieval", {}),
+        "rag": config.get("rag", {}),
+        "evaluation": config.get("evaluation", {}),
+        "runtime": config.get("runtime", {}),
+        "wandb": {"tags": (config.get("wandb", {}) or {}).get("tags", [])},
+    }
+
+
+def load_research_memory(path: str | Path) -> dict[str, Any]:
+    memory_path = Path(path)
+    if not memory_path.exists():
+        return {"version": 1, "decisions": [], "updated_at": None}
+    with memory_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Autoresearch memory must be a JSON object: {memory_path}")
+    payload.setdefault("version", 1)
+    payload.setdefault("decisions", [])
+    return payload
+
+
+def save_research_memory(path: str | Path, memory: dict[str, Any]) -> Path:
+    memory_path = Path(path)
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    memory["updated_at"] = datetime.now(timezone.utc).isoformat()
+    with memory_path.open("w", encoding="utf-8") as handle:
+        json.dump(memory, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return memory_path
+
+
+def append_research_decision(
+    memory: dict[str, Any],
+    *,
+    route_name: str,
+    proposal_path: str | Path | None = None,
+    branch: str | None = None,
+    workflow_summary: dict[str, Any] | None = None,
+    wandb_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    decisions = memory.setdefault("decisions", [])
+    if not isinstance(decisions, list):
+        decisions = []
+        memory["decisions"] = decisions
+    proposal_config: dict[str, Any] | None = None
+    if proposal_path is not None and Path(proposal_path).exists():
+        proposal_config = compact_config_record(proposal_path, load_config(proposal_path))
+    decisions.append(
+        {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "route": route_name,
+            "proposal": None if proposal_path is None else Path(proposal_path).as_posix(),
+            "proposal_config": proposal_config,
+            "branch": branch,
+            "workflow": workflow_summary or {},
+            "wandb": wandb_summary or {},
+        }
+    )
+    return memory
+
+
+def memory_run_records(memory: dict[str, Any], route_name: str | None = None) -> list[RunRecord]:
+    records: list[RunRecord] = []
+    decisions = memory.get("decisions", [])
+    if not isinstance(decisions, list):
+        return records
+    for index, decision in enumerate(decisions):
+        if not isinstance(decision, dict):
+            continue
+        if route_name and decision.get("route") != route_name:
+            continue
+        proposal_config = decision.get("proposal_config")
+        if not isinstance(proposal_config, dict):
+            continue
+        experiment = proposal_config.get("experiment", {})
+        name = str(experiment.get("name") or decision.get("proposal") or f"memory-{index}")
+        records.append(
+            RunRecord(
+                id=f"memory:{decision.get('branch') or index}",
+                name=name,
+                url=(decision.get("workflow") or {}).get("url"),
+                config=proposal_config,
+                summary={
+                    "validation_error_count": 0,
+                    "rag_validation_error_count": 0,
+                },
+                tags=["autoresearch-memory"],
+            )
+        )
+    return records
+
+
+def config_signature_text(config: dict[str, Any]) -> str:
+    experiment = config.get("experiment", {}) if isinstance(config.get("experiment"), dict) else {}
+    retrieval = config.get("retrieval", {}) if isinstance(config.get("retrieval"), dict) else {}
+    rag = config.get("rag", {}) if isinstance(config.get("rag"), dict) else {}
+    return "|".join(
+        [
+            str(experiment.get("task") or ""),
+            str(retrieval.get("query_template") or ""),
+            str(retrieval.get("hits") or ""),
+            str(rag.get("evidence_top_k") or ""),
+            str(rag.get("max_output_tokens") or ""),
+        ]
+    )
+
+
+def build_research_context(
+    policy: AutoresearchPolicy,
+    runs: list[RunRecord] | None = None,
+    config_dir: str | Path = "configs/experiments",
+    memory_path: str | Path | None = None,
+) -> dict[str, Any]:
+    wandb_runs = fetch_policy_wandb_runs(policy) if runs is None else runs
+    historical_configs = collect_experiment_configs(config_dir)
+    memory = load_research_memory(memory_path or policy.research_memory_path)
+    compact_runs = [compact_run_record(run) for run in wandb_runs]
+    tried_signatures = sorted(
+        {
+            config_signature_text(run.config)
+            for run in wandb_runs
+            if isinstance(run.config, dict)
+        }
+        | {
+            config_signature_text(config)
+            for config in historical_configs
+            if isinstance(config, dict) and "error" not in config
+        }
+    )
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "objective": {
+            "metric": policy.objective.get("metric"),
+            "direction": policy.objective.get("direction"),
+            "fallback_metric": policy.objective.get("fallback_metric"),
+            "fallback_direction": policy.objective.get("fallback_direction"),
+        },
+        "routes": policy.routes,
+        "current_best": summarize_best_run(policy, wandb_runs),
+        "historical_configs": historical_configs,
+        "wandb_runs": compact_runs,
+        "tried_config_signatures": tried_signatures,
+        "research_memory": memory,
+        "agent_instruction": (
+            "Use this whole context, not only current_best, to choose the next "
+            "safe config-only experiment under configs/experiments/."
+        ),
+    }
+
+
 def propose_config_for_route(
     policy: AutoresearchPolicy,
     route_name: str,
@@ -338,18 +621,36 @@ def propose_config_for_route(
     if decision.mode == "proposer_only":
         decision = route_for(policy, "retrieval")
     proposal_runs = fetch_policy_wandb_runs(policy) if runs is None else runs
+    proposal_runs = [
+        *proposal_runs,
+        *memory_run_records(load_research_memory(policy.research_memory_path), route_name=route_name),
+    ]
     base_config = load_config(base_config_path or decision.base_config)
     proposal = propose_next_config(base_config, proposal_runs)
     proposal["experiment"]["task"] = decision.task
+    proposal = restore_unapproved_config_changes(base_config, proposal, policy)
     output_path = Path(output_dir) / f"{proposal['experiment']['name']}.yaml"
-    from .config import write_config
-
     write_config(proposal, output_path)
     errors = validate_proposal_file(output_path, policy)
     errors.extend(validate_config_delta(base_config_path or decision.base_config, output_path, policy))
     if errors:
         raise ValueError("Unsafe autoresearch proposal: " + "; ".join(errors))
     return output_path
+
+
+def apply_runtime_limit(proposal_path: str | Path, limit: str | None) -> None:
+    if limit in (None, ""):
+        return
+    config = load_config(proposal_path)
+    runtime = config.setdefault("runtime", {})
+    if not isinstance(runtime, dict):
+        runtime = {}
+        config["runtime"] = runtime
+    runtime["limit"] = str(limit)
+    retrieval = config.setdefault("retrieval", {})
+    if isinstance(retrieval, dict) and retrieval.get("timeout_seconds") in (None, ""):
+        retrieval["timeout_seconds"] = 30
+    write_config(config, proposal_path)
 
 
 def slugify_branch_component(value: str, max_length: int = 80) -> str:
@@ -401,6 +702,7 @@ def run_branch_iteration(
     limit: str | None = None,
     output_dir: str | Path = "configs/experiments",
     token: str | None = None,
+    dispatch: bool | None = None,
 ) -> dict[str, Any]:
     decision = route_for(policy, route_name)
     proposal_path = propose_config_for_route(
@@ -408,6 +710,7 @@ def run_branch_iteration(
         route_name=route_name,
         output_dir=output_dir,
     )
+    apply_runtime_limit(proposal_path, limit)
     errors = validate_proposal_file(proposal_path, policy)
     if route_name in {"retrieval", "rag", "evaluation-only"}:
         errors.extend(validate_config_delta(decision.base_config, proposal_path, policy))
@@ -418,19 +721,32 @@ def run_branch_iteration(
         proposal_path=proposal_path,
         base_ref=ref or policy.github_base_branch,
     )
-    dispatch_payload = dispatch_route(
+    should_dispatch = (not policy.branch_push_triggers_enabled) if dispatch is None else dispatch
+    dispatch_payload = build_dispatch_payload(
         policy=policy,
         route_name=route_name,
         config_path=proposal_path.as_posix(),
         ref=branch_result["branch"],
         limit=limit,
-        token=token,
     )
+    if should_dispatch:
+        dispatch_payload = dispatch_route(
+            policy=policy,
+            route_name=route_name,
+            config_path=proposal_path.as_posix(),
+            ref=branch_result["branch"],
+            limit=limit,
+            token=token,
+        )
+        trigger = "workflow_dispatch"
+    else:
+        trigger = "branch_push"
     return {
         "route": route_name,
         "proposal": proposal_path.as_posix(),
         "branch": branch_result["branch"],
         "workflow": dispatch_payload["workflow"],
+        "trigger": trigger,
         "dispatch": dispatch_payload,
     }
 
@@ -580,6 +896,76 @@ def build_dispatch_payload(
     }
 
 
+def route_name_for_config(policy: AutoresearchPolicy, config_path: str | Path) -> str:
+    config = load_config(config_path)
+    experiment = config.get("experiment", {})
+    task = str(experiment.get("task") or "").strip().lower() if isinstance(experiment, dict) else ""
+    rag = config.get("rag", {})
+    rag_enabled = bool(rag.get("enabled")) if isinstance(rag, dict) else False
+    if task == "rag" or rag_enabled:
+        return "rag"
+    if task in {"retrieval", "evaluation"}:
+        return "retrieval"
+    for route_name, route in policy.routes.items():
+        if str(route.get("task") or "").strip().lower() == task:
+            return route_name
+    return "retrieval"
+
+
+def workflow_limit_for_config(policy: AutoresearchPolicy, config_path: str | Path) -> str:
+    config = load_config(config_path)
+    runtime = config.get("runtime", {})
+    if isinstance(runtime, dict) and runtime.get("limit") not in (None, ""):
+        return str(runtime["limit"])
+    return route_for(policy, route_name_for_config(policy, config_path)).default_limit
+
+
+def latest_changed_experiment_config(
+    policy: AutoresearchPolicy,
+    route_name: str | None = None,
+    ref: str = "HEAD",
+) -> Path:
+    candidates: list[Path] = []
+    for command in (
+        ["diff-tree", "--no-commit-id", "--name-only", "-r", ref],
+        ["show", "--name-only", "--format=", ref],
+    ):
+        try:
+            output = run_git(command)
+        except subprocess.CalledProcessError:
+            continue
+        candidates = [
+            Path(line.strip())
+            for line in output.splitlines()
+            if line.strip().startswith("configs/experiments/")
+            and Path(line.strip()).suffix in {".yaml", ".yml"}
+            and Path(line.strip()).exists()
+        ]
+        if candidates:
+            break
+    if not candidates:
+        root = Path("configs/experiments")
+        candidates = (
+            sorted(
+                [*root.rglob("*.yaml"), *root.rglob("*.yml")],
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            if root.exists()
+            else []
+        )
+    if route_name:
+        candidates = [
+            path
+            for path in candidates
+            if route_name_for_config(policy, path) == route_name
+        ]
+    if not candidates:
+        route_text = f" for route {route_name}" if route_name else ""
+        raise FileNotFoundError(f"No experiment config found{route_text}.")
+    return candidates[0]
+
+
 def build_autoresearch_pr_body() -> str:
     return (
         "## Summary\n\n"
@@ -712,5 +1098,107 @@ def log_autoresearch_summary(policy: AutoresearchPolicy, summary: dict[str, Any]
         wandb.finish()
 
 
+def log_research_memory(policy: AutoresearchPolicy, memory_path: str | Path) -> str | None:
+    load_env_file()
+    try:
+        import wandb
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("wandb is not installed. Run `python -m pip install -e .`.") from exc
+
+    wandb_config = policy.raw.get("wandb", {})
+    if not isinstance(wandb_config, dict):
+        wandb_config = {}
+    project = os.environ.get("WANDB_PROJECT") or wandb_config.get("project")
+    entity = os.environ.get("WANDB_ENTITY") or wandb_config.get("entity")
+    mode = os.environ.get("WANDB_MODE") or wandb_config.get("mode") or "online"
+    if not project:
+        raise RuntimeError("W&B project is missing. Set WANDB_PROJECT or autoresearch.wandb.project.")
+
+    memory_file = Path(memory_path)
+    run = wandb.init(
+        project=project,
+        entity=entity,
+        mode=mode,
+        name=f"autoresearch_memory_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+        tags=["autoresearch", "memory"],
+    )
+    try:
+        artifact = wandb.Artifact("autoresearch-memory", type="autoresearch-memory")
+        artifact.add_file(memory_file.as_posix())
+        run.log_artifact(artifact)
+        return run.url
+    finally:
+        wandb.finish()
+
+
+def run_autoresearch_loop(
+    policy: AutoresearchPolicy,
+    route_name: str,
+    max_rounds: int,
+    poll_seconds: int,
+    limit: str | None = None,
+    ref: str | None = None,
+    token: str | None = None,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for _round in range(max_rounds):
+        iteration = run_branch_iteration(
+            policy=policy,
+            route_name=route_name,
+            ref=ref,
+            limit=limit,
+            token=token,
+        )
+        branch = str(iteration["branch"])
+        decision = route_for(policy, route_name)
+        client = GitHubActionsClient(policy.github_repository, token=token)
+        workflow_summary: dict[str, Any] = {"status": "missing", "summary": "No workflow run observed yet."}
+        while True:
+            workflow_summary = summarize_runs(
+                client.list_workflow_runs(decision.workflow, branch=branch, per_page=1)
+            )
+            if workflow_summary.get("status") == "completed":
+                break
+            time.sleep(poll_seconds)
+        wandb_runs = fetch_policy_wandb_runs(policy)
+        summary = build_autoresearch_summary(policy, route_name, workflow_summary, wandb_runs)
+        run_url = log_autoresearch_summary(policy, summary)
+        if run_url:
+            summary["autoresearch_wandb_run_url"] = run_url
+        memory = load_research_memory(policy.research_memory_path)
+        append_research_decision(
+            memory,
+            route_name=route_name,
+            proposal_path=str(iteration["proposal"]),
+            branch=branch,
+            workflow_summary=workflow_summary,
+            wandb_summary=summary.get("current_best", {}),
+        )
+        memory_path = save_research_memory(policy.research_memory_path, memory)
+        log_research_memory(policy, memory_path)
+        iteration["summary"] = summary
+        iteration["memory_path"] = memory_path.as_posix()
+        results.append(iteration)
+        if workflow_summary.get("conclusion") != "success":
+            break
+    return results
+
+
+def json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return value.as_posix()
+    if hasattr(value, "items"):
+        try:
+            return dict(value)
+        except Exception:
+            pass
+    if hasattr(value, "tolist"):
+        try:
+            return value.tolist()
+        except Exception:
+            pass
+    return str(value)
+
+
 def dumps_json(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, indent=2, sort_keys=True)
+    return json.dumps(payload, indent=2, sort_keys=True, default=json_default)
