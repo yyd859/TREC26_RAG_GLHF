@@ -22,6 +22,7 @@ from trec26_rag.autoresearch import (
     latest_changed_experiment_config,
     load_autoresearch_policy,
     load_research_memory,
+    memory_run_records,
     open_autoresearch_bootstrap_pr,
     propose_config_for_route,
     route_for,
@@ -344,11 +345,19 @@ class AutoresearchTest(unittest.TestCase):
     def test_research_memory_round_trips_decisions(self) -> None:
         with tempfile.TemporaryDirectory() as output_dir:
             memory_path = Path(output_dir) / "memory.json"
+            proposal_path = Path(output_dir) / "proposal.yaml"
+            write_config(
+                {
+                    "experiment": {"name": "proposal", "task": "retrieval"},
+                    "retrieval": {"query_template": "{title} {narrative}", "hits": 100},
+                },
+                proposal_path,
+            )
             memory = load_research_memory(memory_path)
             append_research_decision(
                 memory,
                 route_name="rag",
-                proposal_path="configs/experiments/rag.yaml",
+                proposal_path=proposal_path,
                 branch="codex/autoresearch-rag",
                 workflow_summary={"conclusion": "success"},
                 wandb_summary={"best_run": {"id": "run-1"}},
@@ -358,6 +367,31 @@ class AutoresearchTest(unittest.TestCase):
 
         self.assertEqual(reloaded["decisions"][0]["route"], "rag")
         self.assertEqual(reloaded["decisions"][0]["branch"], "codex/autoresearch-rag")
+        self.assertEqual(
+            reloaded["decisions"][0]["proposal_config"]["retrieval"]["query_template"],
+            "{title} {narrative}",
+        )
+
+    def test_memory_run_records_turn_decisions_into_attempted_configs(self) -> None:
+        memory = {
+            "decisions": [
+                {
+                    "route": "retrieval",
+                    "branch": "codex/autoresearch-one",
+                    "proposal_config": {
+                        "experiment": {"name": "one", "task": "retrieval"},
+                        "retrieval": {"query_template": "{title} {narrative}", "hits": 100},
+                    },
+                    "workflow": {"url": "https://github.test/run"},
+                }
+            ]
+        }
+
+        records = memory_run_records(memory, route_name="retrieval")
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].id, "memory:codex/autoresearch-one")
+        self.assertEqual(records[0].config["retrieval"]["query_template"], "{title} {narrative}")
 
     def test_build_research_context_combines_configs_runs_and_memory(self) -> None:
         policy = load_autoresearch_policy("configs/autoresearch.yaml")

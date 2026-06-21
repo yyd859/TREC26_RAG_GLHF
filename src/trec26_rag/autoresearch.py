@@ -456,6 +456,18 @@ def collect_experiment_configs(config_dir: str | Path = "configs/experiments") -
     return configs
 
 
+def compact_config_record(path: str | Path | None, config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "path": None if path is None else Path(path).as_posix(),
+        "experiment": config.get("experiment", {}),
+        "retrieval": config.get("retrieval", {}),
+        "rag": config.get("rag", {}),
+        "evaluation": config.get("evaluation", {}),
+        "runtime": config.get("runtime", {}),
+        "wandb": {"tags": (config.get("wandb", {}) or {}).get("tags", [])},
+    }
+
+
 def load_research_memory(path: str | Path) -> dict[str, Any]:
     memory_path = Path(path)
     if not memory_path.exists():
@@ -492,17 +504,52 @@ def append_research_decision(
     if not isinstance(decisions, list):
         decisions = []
         memory["decisions"] = decisions
+    proposal_config: dict[str, Any] | None = None
+    if proposal_path is not None and Path(proposal_path).exists():
+        proposal_config = compact_config_record(proposal_path, load_config(proposal_path))
     decisions.append(
         {
             "created_at": datetime.now(timezone.utc).isoformat(),
             "route": route_name,
             "proposal": None if proposal_path is None else Path(proposal_path).as_posix(),
+            "proposal_config": proposal_config,
             "branch": branch,
             "workflow": workflow_summary or {},
             "wandb": wandb_summary or {},
         }
     )
     return memory
+
+
+def memory_run_records(memory: dict[str, Any], route_name: str | None = None) -> list[RunRecord]:
+    records: list[RunRecord] = []
+    decisions = memory.get("decisions", [])
+    if not isinstance(decisions, list):
+        return records
+    for index, decision in enumerate(decisions):
+        if not isinstance(decision, dict):
+            continue
+        if route_name and decision.get("route") != route_name:
+            continue
+        proposal_config = decision.get("proposal_config")
+        if not isinstance(proposal_config, dict):
+            continue
+        experiment = proposal_config.get("experiment", {})
+        name = str(experiment.get("name") or decision.get("proposal") or f"memory-{index}")
+        records.append(
+            RunRecord(
+                id=f"memory:{decision.get('branch') or index}",
+                name=name,
+                url=(decision.get("workflow") or {}).get("url"),
+                config=proposal_config,
+                summary={
+                    "validation_error_count": 0,
+                    "rag_validation_error_count": 0,
+                },
+                tags=["autoresearch-memory"],
+            )
+        )
+    return records
 
 
 def config_signature_text(config: dict[str, Any]) -> str:
@@ -574,6 +621,10 @@ def propose_config_for_route(
     if decision.mode == "proposer_only":
         decision = route_for(policy, "retrieval")
     proposal_runs = fetch_policy_wandb_runs(policy) if runs is None else runs
+    proposal_runs = [
+        *proposal_runs,
+        *memory_run_records(load_research_memory(policy.research_memory_path), route_name=route_name),
+    ]
     base_config = load_config(base_config_path or decision.base_config)
     proposal = propose_next_config(base_config, proposal_runs)
     proposal["experiment"]["task"] = decision.task
