@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import random
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -51,25 +53,32 @@ def get_pyserini_token() -> str:
 
 
 class PyseriniClient:
+    RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
     def __init__(
         self,
         base_url: str,
         index: str,
         token: str | None = None,
         timeout_seconds: int | None = None,
+        max_retries: int = 5,
+        retry_backoff_seconds: float = 1.0,
+        min_request_interval_seconds: float = 1.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.index = index
         self.token = token or get_pyserini_token()
         self.timeout_seconds = timeout_seconds
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
+        self.min_request_interval_seconds = min_request_interval_seconds
+        self._last_request_at = 0.0
 
     def search(self, query: str, hits: int) -> list[SearchHit]:
         url = f"{self.base_url}/v1/{self.index}/search"
-        response = requests.get(
+        response = self._get(
             url,
             params={"query": query, "hits": hits},
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=self.timeout_seconds,
         )
         if response.status_code == 401:
             raise PyseriniClientError(
@@ -88,10 +97,8 @@ class PyseriniClient:
     def fetch_doc(self, docid: str) -> Any:
         escaped_docid = quote(docid, safe="")
         url = f"{self.base_url}/v1/{self.index}/doc/{escaped_docid}"
-        response = requests.get(
+        response = self._get(
             url,
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=self.timeout_seconds,
         )
         if response.status_code == 401:
             raise PyseriniClientError(
@@ -105,6 +112,48 @@ class PyseriniClient:
         if isinstance(payload, dict):
             return payload.get("doc") or payload.get("document") or payload
         return payload
+
+    def _get(self, url: str, params: dict[str, Any] | None = None) -> requests.Response:
+        response: requests.Response | None = None
+        for attempt in range(self.max_retries + 1):
+            self._respect_min_request_interval()
+            request_kwargs: dict[str, Any] = {
+                "headers": {"Authorization": f"Bearer {self.token}"},
+                "timeout": self.timeout_seconds,
+            }
+            if params is not None:
+                request_kwargs["params"] = params
+            response = requests.get(
+                url,
+                **request_kwargs,
+            )
+            if response.status_code not in self.RETRYABLE_STATUS_CODES:
+                return response
+            if attempt >= self.max_retries:
+                return response
+            time.sleep(self._retry_delay_seconds(response, attempt))
+        if response is None:
+            raise PyseriniClientError("Pyserini request did not produce a response.")
+        return response
+
+    def _respect_min_request_interval(self) -> None:
+        if self.min_request_interval_seconds <= 0:
+            return
+        elapsed = time.monotonic() - self._last_request_at
+        if elapsed < self.min_request_interval_seconds:
+            time.sleep(self.min_request_interval_seconds - elapsed)
+        self._last_request_at = time.monotonic()
+
+    def _retry_delay_seconds(self, response: requests.Response, attempt: int) -> float:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(float(retry_after), self.retry_backoff_seconds)
+            except ValueError:
+                pass
+        backoff = self.retry_backoff_seconds * (2 ** attempt)
+        jitter = random.uniform(0, self.retry_backoff_seconds)
+        return backoff + jitter
 
     def hydrate_hits(
         self,

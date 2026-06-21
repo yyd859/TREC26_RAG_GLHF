@@ -47,6 +47,11 @@ def main() -> int:
         base_url=retrieval_config["api_base_url"],
         index=retrieval_config["index"],
         timeout_seconds=optional_timeout_seconds(retrieval_config.get("timeout_seconds")),
+        max_retries=int(retrieval_config.get("max_retries", 5)),
+        retry_backoff_seconds=float(retrieval_config.get("retry_backoff_seconds", 1.0)),
+        min_request_interval_seconds=float(
+            retrieval_config.get("min_request_interval_seconds", 1.0)
+        ),
     )
 
     started_at = time.monotonic()
