@@ -272,9 +272,10 @@ create the first PR because of permissions, the command prints a manual compare
 URL for the pushed feature branch; open that PR manually, then use the workflow
 after it lands on `main`.
 
-For workflow dispatch from inside another GitHub workflow, add
+For workflow dispatch or PR creation from inside another GitHub workflow, add
 `AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the
-target workflow in this repository.
+target workflow or open pull requests in this repository. The orchestrator falls
+back to the default token when this secret is not present.
 
 ## Local Checks
 
@@ -299,6 +300,10 @@ Recommended repository secrets:
 - `WANDB_ENTITY`
 - `PYSERINI_API_TOKEN`
 - `ANTHROPIC_API_KEY`
+- `AUTORESEARCH_GITHUB_TOKEN`
 
 `PYSERINI_API_TOKEN` is only needed for real retrieval runs.
 `ANTHROPIC_API_KEY` is only needed for RAG generation runs.
+`AUTORESEARCH_GITHUB_TOKEN` is only needed when repository settings block the
+default GitHub Actions token from opening PRs or dispatching downstream
+workflows.

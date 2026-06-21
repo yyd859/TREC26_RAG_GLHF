@@ -84,8 +84,9 @@ Autoresearch safety rules:
 - Generated files must stay under `configs/experiments/`.
 - Do not commit API keys, tokens, passwords, or credentials in YAML.
 - Keep `review.require_pr: true` unless a human explicitly changes the policy.
-- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot
-  dispatch another workflow.
+- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot open
+  PRs or dispatch another workflow. The Actions workflow falls back to the
+  default token when this secret is not configured.
 
 Bootstrap note: new workflow files usually need to land on the default branch
 before they appear in the GitHub Actions UI for manual dispatch. If
