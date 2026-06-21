@@ -4,11 +4,11 @@ Workspace for the TREC 2026 RAG track by team GLHF.
 
 This repo starts with a Level 2 experiment workflow:
 
-1. Humans or Codex open a branch/PR for code and config changes.
+1. Humans or Codex open a branch/PR for code changes.
 2. The retrieval baseline runs against the official Pyserini REST API.
 3. Weights & Biases records configs, metrics, validation reports, and runfiles.
-4. The experiment proposer reads W&B history and creates the next config-only PR.
-5. A human reviews the PR before the next real experiment runs.
+4. The autoresearch loop reads W&B history, creates a config-only experiment branch, and dispatches the matching workflow on that branch.
+5. Humans promote useful experiment configs through PRs only when a result should become part of a shared baseline.
 
 The important guardrail is that optimization starts by changing configs under
 `configs/experiments/`, not arbitrary pipeline code.
@@ -181,21 +181,24 @@ python scripts/propose_next_experiment.py \
 ```
 
 The script reads recent W&B runs, chooses the best valid run, and writes a new
-config file with a single main change. GitHub Actions can then open a PR for
-that config.
+config file with a single main change. For autonomous iterations, prefer
+`scripts/autoresearch.py iterate`, which commits the config on a new experiment
+branch and dispatches the matching workflow immediately.
 
 ## Autoresearch V1
 
-Autoresearch is the review-gated experiment loop inspired by
+Autoresearch is the branch-native experiment loop inspired by
 `karpathy/autoresearch`, adapted to this repo's Level 2 constraint: the agent
 does not edit core code during routine optimization. It reads W&B/GitHub state,
 chooses the next experiment, writes a config under `configs/experiments/`, and
-opens a PR for review.
+runs that config on a dedicated experiment branch. PRs are reserved for
+promoting useful results or changing core code.
 
 V1 selects **GitHub Actions scheduled/manual workflows** as the runner
 environment. This is the lowest-friction option because the repo already uses
-Actions secrets, workflow dispatch, PR review, and W&B logging. Self-hosted GPU
-runners, local long-running agents, Modal/RunPod/Vast, and Codex automations are
+Actions secrets, workflow dispatch, branch-scoped runs, and W&B logging.
+Self-hosted GPU runners, local long-running agents, Modal/RunPod/Vast, and
+Codex automations are
 documented as candidate backends in `configs/autoresearch.yaml`, but they are
 not the default until the workflow needs long-running orchestration or GPU
 compute.
@@ -212,13 +215,14 @@ It defines:
 - routes: `retrieval`, `rag`, `evaluation-only`, and `proposer-only`
 - objective metric and direction
 - GitHub workflow mapping for each experiment route
-- review mode: PR required
+- branching mode: direct experiment branches for routine iterations
 
 Useful local commands:
 
 ```bash
 python scripts/autoresearch.py routes
 python scripts/autoresearch.py best-run
+python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
@@ -232,30 +236,30 @@ under `configs/experiments/`, validates policy constraints, builds the workflow
 dispatch payload, and emits the same monitor summary shape used by real runs.
 Use it before relying on GitHub/W&B credentials.
 
-After a generated config PR is reviewed and merged, trigger the matching
-workflow:
+For a full branch-native iteration, run:
 
 ```bash
-python scripts/autoresearch.py dispatch \
-  --route retrieval \
-  --config configs/experiments/<proposal>.yaml \
-  --ref main
+python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 ```
 
-Then monitor the route:
+This creates a new `codex/autoresearch-*` branch, commits the generated config,
+pushes the branch, and dispatches the matching workflow on that branch.
+
+Then monitor the route or a specific branch:
 
 ```bash
 python scripts/autoresearch.py monitor --route retrieval --branch main
 ```
 
-`dispatch` and `monitor` require `GITHUB_TOKEN`. W&B inspection requires
-`WANDB_API_KEY`, `WANDB_PROJECT`, and optionally `WANDB_ENTITY`.
+`iterate`, `dispatch`, and `monitor` require `GITHUB_TOKEN`. W&B inspection
+requires `WANDB_API_KEY`, `WANDB_PROJECT`, and optionally `WANDB_ENTITY`.
 
 GitHub Actions also has **Autoresearch Orchestrator**, which can:
 
-- propose a config-only PR manually or on the weekly schedule
+- run a branch-native experiment iteration manually or on the weekly schedule
+- generate a config-only proposal locally for inspection
 - show the current W&B best run
-- dispatch a reviewed config to the retrieval/RAG workflow
+- dispatch a config to the retrieval/RAG workflow on the selected branch
 - monitor the latest workflow status and log autoresearch summaries to W&B
 
 Keep GitHub lightweight: Actions should provide trigger/status/log plumbing,
@@ -272,10 +276,10 @@ create the first PR because of permissions, the command prints a manual compare
 URL for the pushed feature branch; open that PR manually, then use the workflow
 after it lands on `main`.
 
-For workflow dispatch or PR creation from inside another GitHub workflow, add
+For workflow dispatch or branch creation from inside another GitHub workflow, add
 `AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the
-target workflow or open pull requests in this repository. The orchestrator falls
-back to the default token when this secret is not present.
+target workflow or push branches in this repository. The orchestrator falls back
+to the default token when this secret is not present.
 
 ## Local Checks
 
@@ -305,5 +309,5 @@ Recommended repository secrets:
 `PYSERINI_API_TOKEN` is only needed for real retrieval runs.
 `ANTHROPIC_API_KEY` is only needed for RAG generation runs.
 `AUTORESEARCH_GITHUB_TOKEN` is only needed when repository settings block the
-default GitHub Actions token from opening PRs or dispatching downstream
-workflows.
+default GitHub Actions token from pushing experiment branches or dispatching
+downstream workflows.

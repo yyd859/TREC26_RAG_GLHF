@@ -4,7 +4,9 @@ This repository uses a Level 2 experiment loop for TREC RAG 2026.
 
 ## Operating Rules
 
-- Keep optimization changes reviewable through GitHub PRs.
+- Keep core code changes reviewable through GitHub PRs.
+- Run routine experiment optimization on dedicated `codex/autoresearch-*`
+  branches without requiring PR review before execution.
 - Prefer config-only changes under `configs/experiments/` for early iterations.
 - Do not commit `.env.local`, `.curlrc.pyserini-rest`, W&B local state, or output runfiles.
 - Log real experiment outputs to W&B artifacts.
@@ -20,7 +22,8 @@ PYTHONPATH=src python -m unittest discover -s tests
 2. Run `scripts/run_retrieval_baseline.py`.
 3. Sync metrics and artifacts to W&B with `--log-wandb`.
 4. Run `scripts/propose_next_experiment.py` to create the next config.
-5. Open or review a PR for the generated config before running it.
+5. For autoresearch iterations, commit the generated config on a dedicated
+   experiment branch and run the matching workflow on that branch.
 
 ## Autoresearch Loop
 
@@ -34,6 +37,7 @@ Use the router command for local orchestration:
 ```bash
 python scripts/autoresearch.py routes
 python scripts/autoresearch.py best-run
+python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 python scripts/autoresearch.py propose --route retrieval
 python scripts/autoresearch.py propose --route rag
 python scripts/autoresearch.py check configs/experiments/
@@ -52,14 +56,16 @@ summaries. GitHub should stay focused on PR review, workflow status, and
 minimal logs; do not add extra GitHub step summaries unless a human explicitly
 asks for them.
 
-After a config PR is reviewed and merged, dispatch the matching workflow with:
+For routine autoresearch, create a new experiment branch and dispatch the
+matching workflow directly:
 
 ```bash
-python scripts/autoresearch.py dispatch \
-  --route retrieval \
-  --config configs/experiments/<proposal>.yaml \
-  --ref main
+python scripts/autoresearch.py iterate --route retrieval --ref main --limit 2
 ```
+
+This reads W&B history, proposes a config under `configs/experiments/`, commits
+it to a new `codex/autoresearch-*` branch, pushes that branch, and dispatches
+the route workflow on that branch.
 
 Then summarize the latest GitHub Actions status:
 
@@ -72,7 +78,7 @@ The supported routes are:
 - `retrieval`: dispatches `run-retrieval-baseline.yml`
 - `rag`: dispatches `run-rag-baseline.yml`
 - `evaluation-only`: reruns the retrieval workflow for evaluation-focused configs
-- `proposer-only`: creates a config PR without triggering an experiment
+- `proposer-only`: creates a config proposal without triggering an experiment
 
 The default runner selection is documented in `configs/autoresearch.yaml`:
 GitHub Actions scheduled/manual workflow is selected for v1; self-hosted GPU
@@ -83,16 +89,18 @@ Autoresearch safety rules:
 
 - Generated files must stay under `configs/experiments/`.
 - Do not commit API keys, tokens, passwords, or credentials in YAML.
-- Keep `review.require_pr: true` unless a human explicitly changes the policy.
-- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot open
-  PRs or dispatch another workflow. The Actions workflow falls back to the
-  default token when this secret is not configured.
+- Routine experiment iterations do not require PRs. Use PRs to promote useful
+  configs to shared branches or to change core code.
+- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot push
+  experiment branches or dispatch another workflow. The Actions workflow falls
+  back to the default token when this secret is not configured.
 
 Bootstrap note: new workflow files usually need to land on the default branch
 before they appear in the GitHub Actions UI for manual dispatch. If
 `GITHUB_TOKEN` is available, use `scripts/autoresearch.py open-pr`; otherwise
 use the printed compare URL or open the compare PR manually from the pushed
-feature branch and continue the loop after merge.
+feature branch and continue the loop after merge. This bootstrap rule is for
+workflow/code changes, not for routine experiment branches.
 
 ## Evaluation Layers
 
