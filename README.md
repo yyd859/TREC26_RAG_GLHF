@@ -184,6 +184,76 @@ The script reads recent W&B runs, chooses the best valid run, and writes a new
 config file with a single main change. GitHub Actions can then open a PR for
 that config.
 
+## Autoresearch V1
+
+Autoresearch is the review-gated experiment loop inspired by
+`karpathy/autoresearch`, adapted to this repo's Level 2 constraint: the agent
+does not edit core code during routine optimization. It reads W&B/GitHub state,
+chooses the next experiment, writes a config under `configs/experiments/`, and
+opens a PR for review.
+
+V1 selects **GitHub Actions scheduled/manual workflows** as the runner
+environment. This is the lowest-friction option because the repo already uses
+Actions secrets, workflow dispatch, PR review, and W&B logging. Self-hosted GPU
+runners, local long-running agents, Modal/RunPod/Vast, and Codex automations are
+documented as candidate backends in `configs/autoresearch.yaml`, but they are
+not the default until the workflow needs long-running orchestration or GPU
+compute.
+
+The policy file is:
+
+```bash
+configs/autoresearch.yaml
+```
+
+It defines:
+
+- allowed paths: only `configs/experiments/`
+- routes: `retrieval`, `rag`, `evaluation-only`, and `proposer-only`
+- objective metric and direction
+- GitHub workflow mapping for each experiment route
+- review mode: PR required
+
+Useful local commands:
+
+```bash
+python scripts/autoresearch.py routes
+python scripts/autoresearch.py best-run
+python scripts/autoresearch.py propose --route retrieval
+python scripts/autoresearch.py propose --route rag
+python scripts/autoresearch.py check configs/experiments/
+```
+
+After a generated config PR is reviewed and merged, trigger the matching
+workflow:
+
+```bash
+python scripts/autoresearch.py dispatch \
+  --route retrieval \
+  --config configs/experiments/<proposal>.yaml \
+  --ref main
+```
+
+Then monitor the route:
+
+```bash
+python scripts/autoresearch.py monitor --route retrieval --branch main
+```
+
+`dispatch` and `monitor` require `GITHUB_TOKEN`. W&B inspection requires
+`WANDB_API_KEY`, `WANDB_PROJECT`, and optionally `WANDB_ENTITY`.
+
+GitHub Actions also has **Autoresearch Orchestrator**, which can:
+
+- propose a config-only PR manually or on the weekly schedule
+- show the current W&B best run
+- dispatch a reviewed config to the retrieval/RAG workflow
+- monitor the latest workflow status
+
+For workflow dispatch from inside another GitHub workflow, add
+`AUTORESEARCH_GITHUB_TOKEN` if the default `GITHUB_TOKEN` cannot trigger the
+target workflow in this repository.
+
 ## Local Checks
 
 Without installing the package:

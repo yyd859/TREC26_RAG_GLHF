@@ -7,6 +7,10 @@ on:
         description: "Base config"
         required: true
         default: "configs/baseline_retrieval.yaml"
+      route:
+        description: "Autoresearch route"
+        required: false
+        default: "retrieval"
 
 permissions:
   contents: write
@@ -27,16 +31,16 @@ jobs:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
           WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
           WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
-        run: python scripts/propose_next_experiment.py --base-config "${{ inputs.base_config }}" --output-dir configs/experiments
+        run: python scripts/autoresearch.py propose --route "${{ inputs.route }}" --base-config "${{ inputs.base_config }}" --output-dir configs/experiments
       - name: Open config proposal PR
         uses: peter-evans/create-pull-request@v6
         with:
           branch: codex/propose-next-experiment
           delete-branch: true
-          title: "Propose next retrieval experiment"
-          commit-message: "Add next retrieval experiment config"
+          title: "Propose next ${{ inputs.route }} experiment"
+          commit-message: "Add next experiment config"
           body: |
-            This PR was generated from recent W&B retrieval runs.
+            This PR was generated from recent W&B runs.
 
             It only adds a config under `configs/experiments/` so the next
             experiment can be reviewed before it runs.

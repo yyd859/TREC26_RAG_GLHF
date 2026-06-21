@@ -22,6 +22,58 @@ PYTHONPATH=src python -m unittest discover -s tests
 4. Run `scripts/propose_next_experiment.py` to create the next config.
 5. Open or review a PR for the generated config before running it.
 
+## Autoresearch Loop
+
+Autoresearch v1 uses GitHub Actions as the runner environment and keeps the
+agent at Level 2: it may propose config-only changes but must not directly
+change core code during routine optimization. The policy lives in
+`configs/autoresearch.yaml`.
+
+Use the router command for local orchestration:
+
+```bash
+python scripts/autoresearch.py routes
+python scripts/autoresearch.py best-run
+python scripts/autoresearch.py propose --route retrieval
+python scripts/autoresearch.py propose --route rag
+python scripts/autoresearch.py check configs/experiments/
+```
+
+After a config PR is reviewed and merged, dispatch the matching workflow with:
+
+```bash
+python scripts/autoresearch.py dispatch \
+  --route retrieval \
+  --config configs/experiments/<proposal>.yaml \
+  --ref main
+```
+
+Then summarize the latest GitHub Actions status:
+
+```bash
+python scripts/autoresearch.py monitor --route retrieval --branch main
+```
+
+The supported routes are:
+
+- `retrieval`: dispatches `run-retrieval-baseline.yml`
+- `rag`: dispatches `run-rag-baseline.yml`
+- `evaluation-only`: reruns the retrieval workflow for evaluation-focused configs
+- `proposer-only`: creates a config PR without triggering an experiment
+
+The default runner selection is documented in `configs/autoresearch.yaml`:
+GitHub Actions scheduled/manual workflow is selected for v1; self-hosted GPU
+runners, local long-running agents, Modal/RunPod/Vast, and Codex automations
+remain candidate backends.
+
+Autoresearch safety rules:
+
+- Generated files must stay under `configs/experiments/`.
+- Do not commit API keys, tokens, passwords, or credentials in YAML.
+- Keep `review.require_pr: true` unless a human explicitly changes the policy.
+- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot
+  dispatch another workflow.
+
 ## Evaluation Layers
 
 - `Level 0`: validator checks runfile format, complete topic coverage, rank order, and score order.
