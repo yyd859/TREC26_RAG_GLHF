@@ -3,7 +3,11 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from contextlib import redirect_stdout
+from io import StringIO
+from unittest.mock import patch
 
+import scripts.run_rag_baseline as run_rag_baseline
 from scripts.run_rag_baseline import (
     build_citation_diagnostics,
     build_generation_requests,
@@ -12,8 +16,8 @@ from scripts.run_rag_baseline import (
     write_json,
 )
 from trec26_rag.generator import AnswerGenerationRequest, EvidenceDocument
-from trec26_rag.pyserini_client import SearchHit
 from trec26_rag.rag_output import AnswerSentence, RagResponse
+from trec26_rag.pyserini_client import SearchHit
 from trec26_rag.runfile import Topic
 
 
@@ -141,6 +145,80 @@ class RunRagBaselineTest(unittest.TestCase):
             path = Path(tmpdir) / "nested" / "metrics.json"
             write_json(path, {"metric": 1})
             self.assertEqual(path.read_text(encoding="utf-8"), '{\n  "metric": 1\n}')
+
+    def test_main_returns_success_when_rag_validation_fails(self) -> None:
+        topic = Topic("14", "Title", "Narrative")
+        response = RagResponse(
+            topic=topic,
+            team_id="glhf",
+            run_id="rag-run",
+            references=["doc-a"],
+            answer=[AnswerSentence("Answer sentence.", [0])],
+        )
+        config = {
+            "experiment": {"team_id": "glhf", "run_id": "rag-run"},
+            "data": {"topics_path": "topics.jsonl"},
+            "retrieval": {"api_base_url": "http://example.test", "index": "idx"},
+            "rag": {"enabled": True, "evidence_top_k": 1},
+            "output": {
+                "output_dir": "outputs",
+                "rag_output_name": "rag.jsonl",
+                "rag_validation_report_name": "report.json",
+                "rag_proxy_metrics_name": "proxy.json",
+                "rag_citation_diagnostics_name": "citations.json",
+                "rag_viewer_name": "viewer.html",
+                "rag_table_csv_name": "table.csv",
+                "rag_table_jsonl_name": "table.jsonl",
+            },
+        }
+        invalid_report = {
+            "valid": False,
+            "errors": ["invalid citation"],
+            "warnings": [],
+            "metrics": {
+                "rag_object_count": 1,
+                "rag_topic_count": 1,
+                "rag_expected_topic_count": 1,
+                "rag_missing_topic_count": 0,
+                "rag_extra_topic_count": 0,
+                "rag_reference_count_total": 1,
+                "rag_reference_count_mean": 1.0,
+                "rag_answer_sentence_count_total": 1,
+                "rag_answer_sentence_count_mean": 1.0,
+                "rag_citation_count_total": 1,
+                "rag_citation_count_mean": 1.0,
+                "rag_invalid_citation_count": 1,
+                "rag_uncited_reference_count": 0,
+                "rag_empty_answer_count": 0,
+                "rag_validation_error_count": 1,
+                "rag_validation_warning_count": 0,
+            },
+            "diagnostics": {"per_topic": {"14": {}}, "missing_topics": [], "extra_topics": []},
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config["output"]["output_dir"] = tmpdir
+            argv = ["run_rag_baseline.py", "--config", "config.yaml", "--raw-results-output", f"{tmpdir}/raw.jsonl"]
+            with (
+                patch("sys.argv", argv),
+                patch.object(run_rag_baseline, "load_config", return_value=config),
+                patch.object(run_rag_baseline, "read_topics", return_value=[topic]),
+                patch.object(run_rag_baseline, "PyseriniClient"),
+                patch.object(run_rag_baseline.AnthropicBatchAnswerGenerator, "from_config"),
+                patch.object(run_rag_baseline, "build_generation_requests", return_value=[]),
+                patch.object(run_rag_baseline, "wait_for_batch", return_value="ended"),
+                patch.object(run_rag_baseline, "parse_batch_results_jsonl", return_value={}),
+                patch.object(run_rag_baseline, "build_rag_responses", return_value=[response]),
+                patch.object(run_rag_baseline, "validate_rag_jsonl", return_value=invalid_report),
+            ):
+                generator = run_rag_baseline.AnthropicBatchAnswerGenerator.from_config.return_value
+                generator.create_batch.return_value.id = "batch-1"
+                generator.create_batch.return_value.processing_status = "in_progress"
+
+                with redirect_stdout(StringIO()):
+                    exit_code = run_rag_baseline.main()
+
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":

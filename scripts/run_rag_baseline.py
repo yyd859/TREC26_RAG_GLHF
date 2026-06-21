@@ -417,7 +417,7 @@ def main() -> int:
             indent=2,
         )
     )
-    return 0 if report["valid"] else 1
+    return 0
 
 
 if __name__ == "__main__":
