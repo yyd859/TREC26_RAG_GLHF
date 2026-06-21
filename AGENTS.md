@@ -22,6 +22,77 @@ PYTHONPATH=src python -m unittest discover -s tests
 4. Run `scripts/propose_next_experiment.py` to create the next config.
 5. Open or review a PR for the generated config before running it.
 
+## Autoresearch Loop
+
+Autoresearch v1 uses GitHub Actions as the runner environment and keeps the
+agent at Level 2: it may propose config-only changes but must not directly
+change core code during routine optimization. The policy lives in
+`configs/autoresearch.yaml`.
+
+Use the router command for local orchestration:
+
+```bash
+python scripts/autoresearch.py routes
+python scripts/autoresearch.py best-run
+python scripts/autoresearch.py propose --route retrieval
+python scripts/autoresearch.py propose --route rag
+python scripts/autoresearch.py check configs/experiments/
+python scripts/autoresearch.py dry-run --route retrieval --ref main
+python scripts/autoresearch.py dry-run --route rag --ref main
+python scripts/autoresearch.py open-pr --head codex/autoresearch-v1
+```
+
+Use `dry-run` before touching GitHub/W&B. It performs a local no-network
+simulation that creates a temporary proposal under `configs/experiments/`,
+validates safety constraints, builds the workflow dispatch payload, and emits a
+monitor-style summary.
+
+Prefer W&B as the durable home for experiment results and autoresearch
+summaries. GitHub should stay focused on PR review, workflow status, and
+minimal logs; do not add extra GitHub step summaries unless a human explicitly
+asks for them.
+
+After a config PR is reviewed and merged, dispatch the matching workflow with:
+
+```bash
+python scripts/autoresearch.py dispatch \
+  --route retrieval \
+  --config configs/experiments/<proposal>.yaml \
+  --ref main
+```
+
+Then summarize the latest GitHub Actions status:
+
+```bash
+python scripts/autoresearch.py monitor --route retrieval --branch main
+```
+
+The supported routes are:
+
+- `retrieval`: dispatches `run-retrieval-baseline.yml`
+- `rag`: dispatches `run-rag-baseline.yml`
+- `evaluation-only`: reruns the retrieval workflow for evaluation-focused configs
+- `proposer-only`: creates a config PR without triggering an experiment
+
+The default runner selection is documented in `configs/autoresearch.yaml`:
+GitHub Actions scheduled/manual workflow is selected for v1; self-hosted GPU
+runners, local long-running agents, Modal/RunPod/Vast, and Codex automations
+remain candidate backends.
+
+Autoresearch safety rules:
+
+- Generated files must stay under `configs/experiments/`.
+- Do not commit API keys, tokens, passwords, or credentials in YAML.
+- Keep `review.require_pr: true` unless a human explicitly changes the policy.
+- Use `AUTORESEARCH_GITHUB_TOKEN` only if the default GitHub token cannot
+  dispatch another workflow.
+
+Bootstrap note: new workflow files usually need to land on the default branch
+before they appear in the GitHub Actions UI for manual dispatch. If
+`GITHUB_TOKEN` is available, use `scripts/autoresearch.py open-pr`; otherwise
+use the printed compare URL or open the compare PR manually from the pushed
+feature branch and continue the loop after merge.
+
 ## Evaluation Layers
 
 - `Level 0`: validator checks runfile format, complete topic coverage, rank order, and score order.

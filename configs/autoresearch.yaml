@@ -1,0 +1,86 @@
+runner:
+  selected: github_actions
+  rationale: >
+    Start with GitHub Actions because the project already uses manual
+    workflow_dispatch runs, repository secrets, branch review, and W&B logging.
+    This keeps v1 code-centric and reviewable. Self-hosted GPU runners, local
+    long-running agents, Modal, RunPod, and Codex automations remain candidate
+    backends once experiment volume or GPU needs justify another scheduler.
+  options:
+    github_actions_scheduled_manual:
+      status: selected_v1
+      tradeoffs: "Lowest integration cost; inherits GitHub review gates; limited as a long-running agent."
+    self_hosted_github_runner:
+      status: candidate_gpu
+      tradeoffs: "Best next step for GPU work; requires runner lifecycle and secret hygiene."
+    local_long_running_agent:
+      status: candidate_dev
+      tradeoffs: "Easy to debug; depends on one machine staying online."
+    cloud_runner:
+      status: candidate_scale
+      tradeoffs: "Modal/RunPod can scale compute; needs extra job and storage plumbing."
+    codex_automation:
+      status: candidate_orchestration
+      tradeoffs: "Useful for periodic thought loops if available; still should emit config-only PRs."
+
+allowed_paths:
+  - configs/experiments/
+
+approved_config_keys:
+  - experiment.name
+  - experiment.hypothesis
+  - experiment.run_id
+  - experiment.parent_wandb_run_id
+  - experiment.parent_wandb_run_url
+  - experiment.task
+  - retrieval.query_template
+  - retrieval.hits
+  - evaluation.qrels_path
+  - evaluation.relevance_threshold
+  - rag.evidence_top_k
+  - rag.prompt_template
+  - rag.max_output_tokens
+  - wandb.tags
+
+routes:
+  retrieval:
+    task: retrieval
+    workflow: run-retrieval-baseline.yml
+    base_config: configs/baseline_retrieval.yaml
+    default_limit: ""
+  rag:
+    task: rag
+    workflow: run-rag-baseline.yml
+    base_config: configs/baseline_rag.yaml
+    default_limit: 2
+  evaluation-only:
+    task: retrieval
+    workflow: run-retrieval-baseline.yml
+    base_config: configs/baseline_retrieval.yaml
+    default_limit: ""
+    mode: evaluation_only
+  proposer-only:
+    task: proposer
+    workflow: propose-next-experiment.yml
+    base_config: configs/baseline_retrieval.yaml
+    default_limit: ""
+    mode: proposer_only
+
+objective:
+  metric: ndcg@10
+  direction: maximize
+  fallback_metric: candidate_count_mean
+  fallback_direction: maximize
+
+review:
+  require_pr: true
+  pr_branch_prefix: codex/autoresearch-
+
+github:
+  repository: yyd859/TREC26_RAG_GLHF
+  base_branch: main
+
+wandb:
+  project: trec26-rag-glhf
+  entity: null
+  max_runs: 25
