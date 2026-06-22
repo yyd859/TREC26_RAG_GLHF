@@ -1,0 +1,67 @@
+experiment:
+  name: 20260622_180923_title_narrative_top100
+  hypothesis: Adding the narrative to the title query may improve recall over title-only
+    retrieval.
+  task: retrieval
+  track_year: 2026
+  team_id: glhf
+  run_id: glhf-title-narrative-top100
+  parent_wandb_run_id: null
+  parent_wandb_run_url: null
+data:
+  topics_path: data/trec_rag_2026_queries.jsonl
+retrieval:
+  api_base_url: http://99.251.12.72:8081
+  index: climbmix-400b
+  query_template: '{title} {narrative}'
+  hits: 100
+  timeout_seconds: null
+  max_retries: 8
+  retry_backoff_seconds: 5.0
+  min_request_interval_seconds: 3.0
+output:
+  output_dir: outputs
+  runfile_name: r_output_trec_rag_2026.tsv
+  rag_output_name: rag_output_trec_rag_2026.jsonl
+  validation_report_name: retrieval_validation_report.json
+  rag_validation_report_name: rag_validation_report.json
+  rag_proxy_metrics_name: rag_proxy_metrics.json
+  rag_citation_diagnostics_name: rag_citation_diagnostics.json
+  rag_viewer_name: rag_viewer.html
+  rag_table_csv_name: rag_outputs_table.csv
+  rag_table_jsonl_name: rag_outputs_table.jsonl
+evaluation:
+  qrels_path: null
+  relevance_threshold: 1
+  metrics:
+  - ndcg@10
+  - recall@100
+  - map
+  - mrr
+rag:
+  enabled: false
+  evidence_top_k: 5
+  generator_provider: anthropic_batch
+  model: claude-haiku-4-5-20251001
+  prompt_template: 'Answer the topic using only the provided ClimbMix evidence. Break
+    the answer
+
+    into concise sentences and cite each sentence with the supporting reference
+
+    indices.
+
+    '
+  max_output_tokens: 800
+wandb:
+  project: trec26-rag-glhf
+  entity: null
+  mode: online
+  tags:
+  - baseline
+  - climbmix-400b
+  - dev
+  - proposed
+  - retrieval
+optimization:
+  objective_metric: candidate_count_mean
+  objective_direction: maximize
